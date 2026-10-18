@@ -10,6 +10,8 @@
 
 A module is one {{MODULE_UNIT}} under `libs/` (or an app under `apps/`). Every module is a boundary (see Data validation rules).
 
+This table is a living record, not a plan. List only modules that the specification (features, schemas, interface comments) already contains, and keep each row in step with it. The Plan step adds, revises, merges, or removes rows as the design is discovered. Never invent a module to fill the table.
+
 | Module | Owns (responsibility and the decisions it hides) | Public interface |
 | --- | --- | --- |
 {{MODULE_ROWS}}
@@ -17,6 +19,8 @@ A module is one {{MODULE_UNIT}} under `libs/` (or an app under `apps/`). Every m
 ## External boundaries
 
 Every source of data that enters this process from outside the type system. Rule 1 applies to each.
+
+This list is a living record. It holds the sources the specification already covers, and the Plan step extends it as new ones are discovered. An empty list does not mean there are no boundaries: Rule 1 applies to every source that exists, listed or not.
 
 {{EXTERNAL_BOUNDARIES}}
 

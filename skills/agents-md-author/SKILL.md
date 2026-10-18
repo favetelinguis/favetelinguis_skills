@@ -6,9 +6,11 @@ description: >-
   data types and decision tables behind an imperative shell, BDD features first,
   property-based and mutation testing, JSON Schema validation at every boundary,
   and a plan-implement-review workflow. Interviews the human about what the
-  project builds, maps every rule onto the project's language and tooling,
+  project is for and which stack it uses, maps every rule onto that tooling,
   wires the commands that enforce it, and installs project-local pi prompt
-  templates (/vibe, /vibe-review, /impl, /impl-review) that carry the workflow. Use when starting a new project or repo,
+  templates (/vibe, /vibe-review, /impl, /impl-review) that carry the workflow.
+  Works from a rough idea: modules and boundaries are discovered later through /vibe,
+  not required up front. Use when starting a new project or repo,
   or when creating, regenerating, updating, or auditing AGENTS.md or CLAUDE.md,
   agent instructions, coding guidelines, architecture rules, or the workflow
   prompt templates for a codebase.
@@ -45,32 +47,35 @@ goes under `## Project deviations` in `AGENTS.md`, with its reason.
       `go.mod`, Gradle, `.csproj`), the CI config, and the top-level layout.
     - Note the language(s), package manager, and the test, lint, and schema tools already in use.
     - An empty repo is a greenfield project: the language is still to be decided.
-2. **Interview the human.** Ask in batches and keep asking until each item below is concrete. Never
-   fill a gap with a guess or a `TODO`.
-    - What the project builds, for whom, and why (`PROJECT_PURPOSE`); scope and non-goals.
-    - The deployable unit, such as one binary, service, or CLI.
-    - The modules. For each: its responsibility, the design decisions it hides, and its public
-      interface in one line. Challenge shallow or overlapping modules now.
-    - Every external boundary: environment variables, files, databases, network APIs, model output,
-      inbound messages. Note which real services need `@live` tests.
-    - The core's branching business rules. Sketch them as decision tables. If any table hits a
-      scale signal from the template's "Warn the human" list, warn now and agree an alternative.
+2. **Interview the human, briefly.** This skill runs first, before the human has explored the
+   problem. Ask only for what the human can know today, and accept rough answers. The modules,
+   boundaries, and business rules are not an input: they are discovered later, in `/vibe` sessions.
+    - What the project is for, and for whom (`PROJECT_PURPOSE`). Scope and non-goals only as far as
+      they are known; a rough or partial statement is fine.
     - Language and runtime, if not decided. Existing conventions the human wants to keep.
+    - The deployable unit, defaulting to one binary, service, or CLI. Confirm rather than ask.
     - Any existing `.pi/prompts/` files. Same-named ones are replaced; ask whether others stay.
-    - Push back on anything that conflicts with the rules, such as microservices, mocks in the
-      core, or code-first schemas. Either the human drops it, or it becomes a recorded deviation.
+    - Modules, boundaries, live services, or business rules, **only if the human volunteers them**
+      or the repo already contains them. Record those as seeds. Do not ask for the full list, do not
+      press for completeness, and do not design modules for them.
+    - Push back only on what conflicts with the rules today (microservices, mocks in the core,
+      code-first schemas). Either the human drops it, or it becomes a recorded deviation.
+    - Never fill a gap with a guess or a `TODO`. An unknown that belongs to later discovery is
+      written as "none yet" (see Placeholders), not invented.
 3. **Map the stack.** Read the language's section in
    [references/stack-tooling.md](references/stack-tooling.md), plus its "Shared conventions"
    section. Prefer tools already in the project when they satisfy the rule. Confirm commands and
    flags with each tool's `--help` or docs.
 4. **Draft.** Copy the template to `<project>/AGENTS.md`, or follow "Updating an existing
    AGENTS.md" below. Copy each `assets/pi-prompts/<name>.md` to `<project>/.pi/prompts/<name>.md`.
-   Replace every `{{PLACEHOLDER}}` in all five files (see the table below).
+   Replace every `{{PLACEHOLDER}}` in all five files (see the table below). Leave the living
+   sections empty when nothing is known yet.
 5. **Wire enforcement.** Every command and check named in the file must exist and run.
     - List what is missing: dependencies, configs, task scripts, the schema module skeleton, and
       the `.gitignore` entry for generated types.
     - Get the human's approval, then add only that tooling.
-    - On a greenfield repo the commands must pass on the empty project.
+    - On a greenfield repo the commands must pass on the empty project, with no modules yet. Create
+      only the shared schema module skeleton and tooling configs, never a placeholder feature module.
 6. **Validate**, and repeat until there are no errors:
 
    ```bash
@@ -83,16 +88,17 @@ goes under `## Project deviations` in `AGENTS.md`, with its reason.
       Project deviations. Otherwise restore the template text.
     - Then run `CMD_CHECK` and `CMD_TEST` once. Report any command you could not run.
 7. **Hand off.** Summarise the stack choices, the deviations, any decision-table warnings, and the
-   files added. Tell the human to run `/reload` (or restart pi) and trust the project so the
+   files added. State which living sections (Modules, External boundaries) are empty and that
+   `/vibe` fills them in as the design emerges. Tell the human to run `/reload` (or restart pi) and trust the project so the
    prompt templates load. The human reviews and commits; never commit.
 
 ## Placeholders
 
 | Placeholder                                                           | Source                                                                                                                                                                                                                  |
 |-----------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `PROJECT_NAME`, `PROJECT_PURPOSE`, `SCOPE`, `NON_GOALS`, `DEPLOYABLE` | Interview. Keep the purpose to 2-4 sentences.                                                                                                                                                                           |
-| `MODULE_ROWS`                                                         | Interview: one table row per module, each cell one line                                                                                                                                                                 |
-| `EXTERNAL_BOUNDARIES`, `LIVE_SERVICES`                                | Interview: a bullet list naming each concrete source; `None.` if there are no live services                                                                                                                             |
+| `PROJECT_NAME`, `PROJECT_PURPOSE`, `SCOPE`, `NON_GOALS`, `DEPLOYABLE` | Interview. Keep the purpose to 2-4 sentences. Scope and non-goals may be `Not yet decided.`                                                                                                                                                                           |
+| `MODULE_ROWS`                                                         | Only modules that already exist in the repo or that the human named: one row each, cells one line. Otherwise exactly one row: `\| _none yet_ \| _added by the Plan step_ \| _n/a_ \|`                                      |
+| `EXTERNAL_BOUNDARIES`, `LIVE_SERVICES`                                | Only sources already in the repo or named by the human, as bullets. Otherwise `None yet.` for both                                                                                                                      |
 | `PROJECT_DEVIATIONS`                                                  | Agreed exceptions as `- rule: reason` bullets, or `None.`                                                                                                                                                               |
 | `STACK`, `LANGUAGE`, `LAYOUT_TREE`, `CMD_*`                           | Inspection plus the stack map. `LAYOUT_TREE` shows the real dirs with a one-line role each.                                                                                                                             |
 | All other placeholders, including `STUB_BODY`                         | [references/stack-tooling.md](references/stack-tooling.md), section for the language                                                                                                                                    |
@@ -100,7 +106,9 @@ goes under `## Project deviations` in `AGENTS.md`, with its reason.
 ## Updating an existing AGENTS.md
 
 - Regenerate from the current template; do not patch the old file.
-- Carry the project facts from the old file into Project and Stack and commands.
+- Carry the project facts from the old file into Project and Stack and commands, including every
+  existing row of Modules and External boundaries. Never drop a living-section entry; the Plan
+  step owns removals.
 - Regenerate the four prompt templates the same way. Old workflow text in `AGENTS.md` (step
   procedures, checklists, report formats) is now covered by the prompt templates; drop it.
 - For each old rule that contradicts the template, ask the human: is it a deviation (record it) or
@@ -120,6 +128,8 @@ goes under `## Project deviations` in `AGENTS.md`, with its reason.
 - The prompt templates are pi-specific. If the human drives another harness, ask where its
   project commands live (Claude Code: `.claude/commands/`), copy them there too, and rewrite only
   the argument syntax for that harness.
+- Do not design the architecture here. An empty Modules table is correct on day one; a table
+  invented from guesses is a defect, because later steps treat it as the specification's record.
 - This skill acts as planner, not tester or implementer. Write tooling configs only. Write no
   features, steps, property tests, schemas for real data, or implementation code.
 - JSON Schema draft 2020-12 is fixed even where the type generator supports less. Keep schemas inside
