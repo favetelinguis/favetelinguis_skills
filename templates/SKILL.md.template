@@ -1,0 +1,18 @@
+---
+name: skill-name
+description: >-
+  TODO: What the skill does, in third person. Use when <specific triggers:
+  tasks, file types, tools, phrases the user might say>.
+---
+
+# Skill Title
+
+TODO: Only what the agent does not already know. Imperative steps.
+
+## Workflow
+
+1. TODO
+
+## Reference
+
+Read [references/details.md](references/details.md) when <specific condition>.

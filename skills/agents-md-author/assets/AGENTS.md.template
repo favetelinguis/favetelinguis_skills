@@ -1,0 +1,296 @@
+# Project
+
+**{{PROJECT_NAME}}**: {{PROJECT_PURPOSE}}
+
+- **Scope:** {{SCOPE}}
+- **Non-goals:** {{NON_GOALS}}
+- **Deployable:** {{DEPLOYABLE}}
+
+## Modules
+
+A module is one {{MODULE_UNIT}} under `libs/` (or an app under `apps/`). Every module is a boundary (see Data validation rules).
+
+| Module | Owns (responsibility and the decisions it hides) | Public interface |
+| --- | --- | --- |
+{{MODULE_ROWS}}
+
+## External boundaries
+
+Every source of data that enters this process from outside the type system. Rule 1 applies to each.
+
+{{EXTERNAL_BOUNDARIES}}
+
+Live services (tests that touch them are tagged `@live`): {{LIVE_SERVICES}}
+
+## Project deviations
+
+These are agreed exceptions to the rules below, each with its reason. Everything not listed here follows the rules exactly.
+
+{{PROJECT_DEVIATIONS}}
+
+# Guardrails
+
+- Do not add tests (feature files or scenarios) unless you are explicitly instructed to act as a tester. The one exception is property tests (see "Testing rules"). The implementer writes them to cover the permutations the features cannot, and they never replace or weaken a feature.
+- Do not add documentation unless you are explicitly instructed to act as a planner.
+- Do not weaken a scenario, or change a schema's contract, just to make code pass. Raise it with the human instead.
+- Do not commit. Every step ends with a commit made by the human after review.
+
+# Architecture
+
+- **Modular monolith.** Build one deployable unit ({{DEPLOYABLE}}). Do not introduce microservices or out-of-process network calls between internal modules.
+- **Strict module encapsulation.** Modules communicate only through their explicit public interface ({{PUBLIC_API_MECHANISM}}). Never access another module's storage, tables, internal domain types, or private files. This is enforced by {{BOUNDARY_ENFORCEMENT}}.
+- **Low cognitive load.** A developer can fully understand and change one module without holding the entire system in their head.
+
+## Pure core, imperative shell
+
+Every module strictly separates computation from I/O:
+
+```text
+[ input event / trigger ]
+          |
+          v
+  imperative shell   gathers state: storage, files, network, clock, randomness
+          |  (plain data)
+          v
+     pure core       deterministic logic and invariants
+          |  (result or domain events)
+          v
+  imperative shell   persists, dispatches, performs side effects
+```
+
+- **Pure core (domain and business logic).** Business rules, state transitions, and validation logic are deterministic pure functions.
+  - The core has no side effects: no I/O, network calls, storage access, clock reads, randomness, or global state. Time, IDs, and random values are passed in as data.
+  - It takes immutable data as input and returns explicit result types or domain events.
+- **Imperative shell (infrastructure and coordination).** This is a thin execution layer. It gathers state from external sources, feeds it to the core, and executes the side effects the core's result calls for.
+  - The shell only orchestrates. Business rules and domain branching never live in it.
+
+## Modelling the pure core: ADTs and decision tables
+
+- **Model the domain with algebraic data types.**
+  - Use sum types for alternatives: states, commands, events, outcomes.
+  - Use immutable product types for data.
+  - Make illegal states unrepresentable. Prefer a variant per state over a bag of optional fields and flags.
+  - Expected domain outcomes are variants of a result type returned by the core, not exceptions.
+  - Handle sum types with exhaustive matching. Never add a catch-all branch over a domain type that would hide a newly added case. This is enforced by {{ADT_ENFORCEMENT}}.
+- **Express branching business rules as decision tables.** A decision table is a set of rows mapping a combination of conditions (each a small finite type) to an outcome.
+  - Write it as {{DECISION_TABLE_FORM}}, so a reviewer can read the rules as one table instead of following nested conditionals.
+  - Every table is *complete*: every combination of conditions maps to an outcome. Prefer completeness checked by the compiler. Otherwise check it in a property test.
+  - Every table is *unambiguous*: rows do not overlap. If row order is used deliberately, the table states its first-match policy and that is tested.
+  - State machines are decision tables over (state, event) giving the next state plus effects to perform, described as data for the shell to execute.
+- **Warn the human when a decision table does not scale.** Do not silently push a table past these limits. Stop and explain which signal applies, then propose an alternative and let the human decide. Signals:
+  - the combinations explode: more than about 4 to 5 conditions, or more than about 30 to 50 rows;
+  - most cells are "don't care", or many rows repeat the same outcome;
+  - conditions are continuous ranges with many thresholds, or need computation or aggregation rather than lookup;
+  - the outcome depends on history or the order of events;
+  - rows must change often, or are owned by people outside the codebase.
+
+  Alternatives to propose:
+  - split the table along its dominant condition into smaller tables;
+  - an explicit state machine;
+  - composed predicate or scoring functions;
+  - a rule set held as validated data (schema-governed), interpreted by the core.
+
+# Design principles (A Philosophy of Software Design)
+
+This project strictly follows the design principles of John Ousterhout's *A Philosophy of Software Design*. The central rule is **deep modules**: a module's interface is small and simple, and it hides a lot of functionality and complexity behind it. Complexity is the enemy. Judge every design decision by whether it reduces the complexity a caller or reader has to hold in their head.
+
+- **Complexity.** Complexity shows up in three ways:
+  - *change amplification*: a simple change touches many places;
+  - *cognitive load*: much must be known to do a task;
+  - *unknown unknowns*: it is unclear what must change or what rules apply.
+
+  It has two causes: *dependencies* (code that cannot be understood or changed alone) and *obscurity* (important information is not obvious). Reduce both. Complexity accumulates in small increments, so no single flaw is "too small to fix".
+- **Strategic, not tactical.** Working code is not the goal; a good design that works is. Do not take a shortcut or leave a hack to finish faster. Spend a small, steady share of each change improving the design of what you touch, and leave it cleaner than you found it.
+- **Deep over shallow.** Prefer few, powerful functions with simple signatures over many thin wrappers. A module whose interface is nearly as complex as its implementation is a defect. Do not split code into small pieces just to make them small.
+- **Hide information.** Each module owns its design decisions (formats, storage, protocols, retries) and does not leak them through its interface. Keep the public surface ({{PUBLIC_API_MECHANISM}}) as small as possible.
+  - *Information leakage:* if one design decision (a format, a table layout, a protocol) appears in more than one module, it has leaked. Move it into one module.
+  - *Temporal coupling:* do not require callers to invoke functions in a specific order (`init()` before `process()`). Hide the ordering inside the module.
+- **Pull complexity downward.** The module absorbs complexity so its callers do not have to. Do not push configuration, options, or error cases onto callers when the module can handle them itself. Define errors out of existence where reasonable.
+- **Errors are complexity; minimize them.** Every error an interface can raise is something each caller must understand and handle.
+  - *Define errors out of existence:* design operations so the unusual case is normal behavior. For example, deleting something already gone succeeds.
+  - *Mask:* handle the error inside the module when it can recover, so callers never see it.
+  - *Aggregate:* handle many failures in one place, with one error type, instead of many special cases.
+  - *Crash:* if an error is rare and cannot be recovered from, fail fast with a clear error. Do not add recovery code nobody will exercise.
+  - Do not catch and rethrow without adding meaning, and do not swallow errors silently. A module declares few, well-defined error types in its interface.
+- **General-purpose interfaces.** Design the interface for the capability, not for the current caller. Make it somewhat more general than today's need, but not speculative. Keep general-purpose mechanism in lower layers, and special-purpose policy and business logic above it.
+- **Different layers, different abstractions.** Each layer offers an abstraction distinct from the layers around it. A pass-through, meaning a function that mostly forwards to another with similar arguments, means the layering is wrong. Merge the layers or move the responsibility.
+- **Comments and names capture what code cannot:** intent, rationale, invariants, and the abstraction, not a restatement of the code. Code comments are part of the code, not "documentation" in the sense of the guardrails above.
+  - *Interface comments* sit above every public function, type, and schema. They say what it does and what a caller must know, so it can be used without reading the body. *Implementation comments* explain only tricky logic inside a function.
+  - Interface comments are written in the planning step (see Way of working), before the implementation. If a module is hard to describe simply, its design is probably wrong. Redesign it before implementing.
+  - Pick precise, consistent names. A name that is vague, or that needs a comment to be understood, is a design smell.
+- **How this shapes the rules below:**
+  - *Features and steps* test a module's behavior only through its public interface, never its internals.
+    - A deep module needs few scenarios at its boundary, and those scenarios survive refactors of the hidden implementation.
+    - Step definitions are deep too: a few reusable, high-level steps and a World that hides setup. Write no step per internal function, and no step that reaches into internals.
+  - *Schemas* sit on the public interface, so they define the small contract the module exposes. There is one per piece of data its public functions accept (Rule 2).
+    - Validation happens inside the module, as the first thing a public function does. Callers cannot misuse it and need no knowledge of the checks.
+    - Do not add schemas for data that stays inside a module. That exposes internals and creates shallow boundaries.
+  - *Errors and validation:* a schema violation is one aggregated error type per boundary (Rules 1 and 2), raised at entry. The rest of the module then runs on trusted data with no defensive checks.
+    - Do not scatter ad-hoc validation or error handling through the internals. Error messages still never contain the failed data.
+    - Features specify error behavior only where it is part of the public interface: the error a caller sees, not how the module recovers internally.
+  - A change that widens an interface, adds a pass-through module, or adds a feature, step, or schema only to cover an internal detail must be justified to the human, or redesigned.
+
+# Way of working
+
+This project follows agentic engineering in iterated steps. Each step ends in a commit made by the human after review; agents never commit. A large plan is broken into steps that are committed separately.
+
+The flow is: Plan (with plan reviews as often as needed) -> human approval and commit -> Implement -> Review (fixes the easy issues, reports the rest) -> human commit -> iterate. Use a fresh session per step. Plan review is the exception: it runs inside the Plan session, because it needs the conversation as the record of intent.
+{{WORKFLOW_TEMPLATES}}
+
+1. **Plan (human and agent).** Experiment and plan together. The result is the specification, made of three parts that are developed together and iteratively, not one after another:
+   - behavior as Gherkin features in `libs/*/features/` and `apps/*/features/`, and the plan in `plan/`;
+   - data shapes and contracts as JSON Schemas in `libs/*/schemas/` and `apps/*/schemas/`;
+   - the interface of each module as interface comments on its public functions and types (what it does, what a caller must know), written as declarations without implementation bodies. These include the core's ADTs and the shape of its decision tables.
+
+   Each part informs the others. A feature that is awkward to write, a schema that is hard to define, an interface comment that is hard to state simply, or a decision table that does not scale all signal that the design is wrong. Fix the design, then update all three parts until they agree. The agent grills the human with questions until the behavior, the contracts, and the interfaces are nailed down. Planning is done when the three parts are consistent and the human approves them.
+
+   In this step the agent acts as planner and tester. It writes only the specification (features, schemas, interface declarations, and `plan/` when needed), never step definitions or implementation. The human constantly reviews and comments on features, schemas, and interface comments; the agent explains or fixes the specification in response.
+
+   A plan review is a read-only checkpoint inside this session. It checks the specification against the human's intent and the rules, surfaces drift, pitfalls, and gaps, and helps the human refocus. Experimenting then continues. Plan reviews are used iteratively and do not end the step.
+2. **Implement (agent).** Write the step definitions in `*/steps/` and the implementation in `libs/*/src/` and `apps/*/src/` so the existing features pass, using the types generated from the schemas.
+   - Features cannot enumerate every input and state. Structure the internals for property-based testing (pure functions with real invariants, state behind a small interface, I/O at the edges) and add property tests where they pay off. They complement the features (see "Testing rules").
+   - Implement to the specification. Do not change the features, schemas, or interface comments to fit the code. If the specification turns out to be wrong, stop and go back to step 1 with the human.
+   - The agent works autonomously and finishes only when `{{CMD_CHECK}}` and `{{CMD_TEST}}` pass.
+3. **Review (review agent).** Review the end result against the features, the schemas, and the rules in this file. Cover security, boundary rules, correctness, design quality, test strength (`{{CMD_MUTATION}}` on the changed modules), and fidelity to the specification.
+   - Directly fix anything that is an easy, obvious, local code fix, without reporting it.
+   - Never change features, schemas, or interface comments, and never make a fix that would invalidate them. A problem in the specification itself is not fixed in code; it goes back to Plan.
+   - Report only substantial findings that need the human: design changes, security issues without an obvious fix, and anything touching the specification.
+   - End with a self-contained handoff. The human can paste it into a fresh Plan session to settle the findings, resolve them directly, or run a follow-up Implement. Then the human commits the step.
+4. **Iterate.** Repeat from step 1 with what was learned.
+
+# Testing rules (BDD, features first)
+
+Testing responsibilities follow the architecture:
+
+| Layer | Design principle | Verified by |
+| --- | --- | --- |
+| System | Modular monolith | Features (BDD) at module boundaries |
+| Module | Deep modules | Features (BDD) on the public interface |
+| Domain | Pure core, imperative shell | Property-based tests |
+| Test suite | Assertion strength | Mutation testing |
+
+- Behavior is specified by features before it is implemented. A feature must fail for the right reason before the code that satisfies it exists, then pass.
+- Features are black-box Given/When/Then scenarios against the public interface. They test what the module accomplishes from the caller's view, not how it works. They never mock or assert on internals, so refactoring the core or the shell wiring never breaks them while behavior is unchanged.
+- Features live in `libs/<module>/features/` and `apps/<app>/features/`. Their step definitions and World live next to them in `steps/`. Run them with {{BDD_TOOL}}. Do not write example-based unit tests beside the source.
+- Tests run offline by default: local servers, dummy credentials, temporary databases.
+  - A scenario or whole feature that calls a real live service (see Project) must be tagged `@live`, above the `Scenario` or above `Feature:`. Run these with `{{CMD_TEST_LIVE}}`.
+  - `{{CMD_TEST}}` excludes `@live`. Never make it need credentials.
+- Schema and validator behavior is covered by the owning module's features, like any other behavior.
+- **Property tests complement features (implementer-owned).** Features describe a module's overall behavior through its public interface, in a few readable scenarios. They cannot also cover every permutation of input and state: enumerating cases at the top level does not scale, and a scenario per edge case turns the specification into noise. So the implementer covers the rest.
+  - Structure the internals so the right code can be tested directly with property-based tests: pure functions with real invariants, state behind a small interface, I/O at the edges. Add property tests where they pay off.
+  - The split is: features say *what the module does*; property tests say *what must hold for every input and sequence* inside it. Neither replaces the other, and neither is a reason to weaken the other.
+  - Use {{PBT_TOOL}}. Property tests are not part of the specification; the implementer decides where they are worth writing. Report each one added in a short list, with the reason it earns its place.
+  - Do not overdo it. A property is justified only when it is idiomatic and makes good use of generated input, never to pad coverage.
+  - Put them beside the code at {{PROPERTY_TEST_LOCATION}}. Shared generators go in {{GENERATOR_LOCATION}}. Neither is part of the public interface, so both stay private to the module. `{{CMD_TEST}}` runs them after the features.
+  - Assert properties, not examples. Good properties include:
+    - round trips and idempotence;
+    - invariants: bounded, unique, no control characters, no secret in an error message;
+    - "different inputs give different outputs";
+    - agreement of a stateful module with a simple model (stateful or model-based testing);
+    - decision tables are complete and deterministic, and every row is reachable.
+
+    A test that fixes one input and one expected output is an example. Put it in a feature or leave it out.
+  - Property tests run without mocks, stubs, or I/O setup, because the pure core needs none. Write custom generators for the domain ADTs so edge cases are covered and failures shrink to minimal counterexamples.
+  - Property tests may reach code that is not on the public interface; that is their purpose.
+    - Pick the pure, invariant-rich parts and test the invariant, not the incidental structure.
+    - A property that only restates the implementation, or breaks on every refactor, is a defect. Delete it rather than adapt it.
+    - Code with no real invariant (wiring, glue) needs no property test; a feature covers it.
+  - A generator that stands for schema-governed data is checked against its schema through `{{SCHEMA_MODULE}}` in a property, so the two cannot drift. Never share generators with other modules.
+  - A failing property is a finding, not an obstacle.
+    - Fix the code, or if the property is wrong, correct it for a stated reason. Never weaken or delete a property only to make code pass.
+    - When a counterexample is reported, keep it as a permanent regression case ({{PBT_REGRESSION}}).
+  - Runs use a random seed, so a failure can appear on any run. Replay a failure from its reported seed ({{PBT_REPLAY}}).
+  - Tests stay offline and deterministic in behavior: local servers, in-memory databases, temporary directories, no live credentials. Clean up every handle a property opens, because it runs many times.
+- **Mutation testing audits the suite.** Line coverage is not evidence; killed mutants are.
+  - Run `{{CMD_MUTATION}}` ({{MUTATION_TOOL}}) on changed modules. Tests must detect injected mutants: flipped logic, altered return values, missing conditions.
+  - A surviving mutant in core logic or at a module boundary is a finding. Strengthen a property, or report a missing scenario to the human (the implementer does not add features).
+  - An equivalent mutant is ignored only with a stated reason.
+- A passing feature proves only what it checks. Do not claim more coverage than the scenarios verify.
+
+# Data validation rules (JSON Schema)
+
+Data crossing a boundary is described by a JSON Schema (draft 2020-12), validated with {{SCHEMA_VALIDATOR}} through `{{SCHEMA_MODULE}}`, and typed by {{LANGUAGE}} types generated from the schema with {{SCHEMA_CODEGEN}}. The schema is the single source of truth. These are rules, not guidance. Code that breaks them is a defect to fix in the same change. There are no exceptions.
+
+**Rule 1: external boundaries.** Every value that enters the process from outside the type system is validated against a schema owned by the receiving module before it is used or typed. That includes everything listed under External boundaries, and always:
+
+- environment variables;
+- files read from disk;
+- anything parsed from JSON or another text format, including JSON stored in database columns;
+- database rows read back into typed values;
+- model output and tool-call arguments;
+- inbound messages (email, queues, webhooks) and their parsed content;
+- network and API responses.
+
+**Rule 2: module boundaries.** Every module is a boundary. Data that crosses from one module into another through its public interface ({{PUBLIC_API_MECHANISM}}) is untrusted by the receiver, however it is typed.
+
+- The exporting module owns the contract: one `*.schema.json` in its own `schemas/` for each piece of data its public functions accept. The schema is the only definition. Consumers import the generated type and never redefine it.
+- The receiver validates on entry, as the first thing the public function does. Return values are not re-validated.
+- Scope is data only: plain values that JSON Schema can express.
+  - Classes, functions, callbacks, clients, handles, and library objects are not data, and are typed in {{LANGUAGE}} only.
+  - If a public function takes both, validate the data part.
+- A scalar needs a schema only when its validity is narrower than its {{LANGUAGE}} type, such as an email address or a model reference. A plain string or number does not.
+- A type the generator cannot express may stay hand-written, but only with a compile-time (or, failing that, test-time) check that it matches the generated type, so the two cannot drift. Where validated data must re-enter a library's own type, convert it once, at that point.
+
+**How to apply both rules**
+
+- Never give boundary data a type with an unchecked cast or a hand-written guard ({{UNCHECKED_CAST_EXAMPLES}}).
+- Use the `{{SCHEMA_MODULE}}` helpers. Do not create ad-hoc validator instances.
+  - Strict mode is the default.
+  - Type coercion and defaults are for environment variables only.
+- Validation errors must never contain the data that failed. Boundary data can hold credentials or private content.
+- A new boundary adds its schema in the same change.
+  - If implementation uncovers a boundary the plan did not cover, add the schema and call it out for the reviewer.
+  - Touching an existing unvalidated boundary means migrating it.
+- Generated types are never committed (`{{GENERATED_DIR}}` is git-ignored). Run `{{CMD_GEN}}` (or `{{CMD_CHECK}}`) after changing a schema.
+- Data created and consumed inside one module, and typed there, is not a boundary.
+
+# Stack and commands
+
+**Language and toolchain:** {{STACK}}
+
+## Layout
+
+```text
+{{LAYOUT_TREE}}
+```
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `{{CMD_CHECK}}` | Code generation, type check, lint, format check, boundary, exhaustiveness, and interface-comment checks |
+| `{{CMD_TEST}}` | All features, then all property tests; offline, excludes `@live` |
+| `{{CMD_TEST_LIVE}}` | `@live` scenarios against real services (needs credentials) |
+| `{{CMD_GEN}}` | Generate types from schemas |
+| `{{CMD_MUTATION}}` | Mutation testing |
+
+## Enforcement
+
+Mechanical checks back the rules above. When a check fails, fix the code. Never disable or loosen the check.
+
+| Rule | Enforced by |
+| --- | --- |
+| Module encapsulation | {{BOUNDARY_ENFORCEMENT}} |
+| Exhaustive handling of domain ADTs | {{ADT_ENFORCEMENT}} |
+| Interface comments on public declarations | {{INTERFACE_COMMENT_ENFORCEMENT}} |
+| Boundary validation and generated types | {{SCHEMA_VALIDATOR}} and {{SCHEMA_CODEGEN}}, via `{{CMD_CHECK}}` |
+| Behavior and invariants | {{BDD_TOOL}} and {{PBT_TOOL}}, via `{{CMD_TEST}}` |
+| Test strength | {{MUTATION_TOOL}}, via `{{CMD_MUTATION}}` |
+
+# Checklist (implementer and reviewer)
+
+Run through this before finishing, and when reviewing:
+
+- **I/O separated from logic?** The core has no storage, file, network, clock, or randomness access, and the shell has no business rules.
+- **Core modelled well?** Domain states are ADTs, matching is exhaustive, and branching rules are complete, unambiguous decision tables. Any table that no longer scales was raised with the human.
+- **Module deep?** It has a simple interface over rich hidden behavior.
+- **Information hidden?** Internals can change without breaking callers.
+- **Errors minimized?** Errors are defined away, masked, or aggregated, rather than pushed to callers.
+- **Complexity pulled down?** The module handles edge cases so callers do not have to.
+- **Layers distinct?** Each layer is a distinct abstraction, with no pass-through functions.
+- **Interface comments useful?** They say what a caller needs, without exposing internals.
+- **Boundaries validated?** Every boundary is validated at entry against its schema, with no unchecked casts.
+- **Features test behavior?** Features target the public interface only, with no assertions on internals.
+- **Properties meaningful?** Domain invariants are covered by properties, not single examples.
+- **Assertions effective?** The tests kill mutants of the changed logic.
+- **Checks green?** `{{CMD_CHECK}}` and `{{CMD_TEST}}` pass.
