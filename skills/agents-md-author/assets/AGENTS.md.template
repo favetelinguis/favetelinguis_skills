@@ -116,7 +116,7 @@ This project strictly follows the design principles of John Ousterhout's *A Phil
 - **Different layers, different abstractions.** Each layer offers an abstraction distinct from the layers around it. A pass-through, meaning a function that mostly forwards to another with similar arguments, means the layering is wrong. Merge the layers or move the responsibility.
 - **Comments and names capture what code cannot:** intent, rationale, invariants, and the abstraction, not a restatement of the code. Code comments are part of the code, not "documentation" in the sense of the guardrails above.
   - *Interface comments* sit above every public function, type, and schema. They say what it does and what a caller must know, so it can be used without reading the body. *Implementation comments* explain only tricky logic inside a function.
-  - Interface comments are written in the planning step (see Way of working), before the implementation. If a module is hard to describe simply, its design is probably wrong. Redesign it before implementing.
+  - Interface comments are part of the specification (see Way of working), so they are written before the implementation. If a module is hard to describe simply, its design is probably wrong. Redesign it before implementing.
   - Pick precise, consistent names. A name that is vague, or that needs a comment to be understood, is a design smell.
 - **How this shapes the rules below:**
   - *Features and steps* test a module's behavior only through its public interface, never its internals.
@@ -132,31 +132,15 @@ This project strictly follows the design principles of John Ousterhout's *A Phil
 
 # Way of working
 
-This project follows agentic engineering in iterated steps. Each step ends in a commit made by the human after review; agents never commit. A large plan is broken into steps that are committed separately.
+Work proceeds in small steps: Plan, then Implement, then Review. Each step ends in a commit the human makes after review. The human starts each step with a prompt that gives your role and its procedure. Follow that prompt.
 
-The flow is: Plan (with plan reviews as often as needed) -> human approval and commit -> Implement -> Review (fixes the easy issues, reports the rest) -> human commit -> iterate. Use a fresh session per step. Plan review is the exception: it runs inside the Plan session, because it needs the conversation as the record of intent.
-{{WORKFLOW_TEMPLATES}}
+The **specification** is three parts, kept consistent with each other and written before the implementation:
 
-1. **Plan (human and agent).** Experiment and plan together. The result is the specification, made of three parts that are developed together and iteratively, not one after another:
-   - behavior as Gherkin features in `libs/*/features/` and `apps/*/features/`, and the plan in `plan/`;
-   - data shapes and contracts as JSON Schemas in `libs/*/schemas/` and `apps/*/schemas/`;
-   - the interface of each module as interface comments on its public functions and types (what it does, what a caller must know), written as declarations without implementation bodies. These include the core's ADTs and the shape of its decision tables.
+- behavior: Gherkin features in `libs/*/features/` and `apps/*/features/`;
+- contracts: JSON Schemas in `libs/*/schemas/` and `apps/*/schemas/`;
+- interfaces: interface comments on public functions and types, including the core's ADTs and the shape of its decision tables.
 
-   Each part informs the others. A feature that is awkward to write, a schema that is hard to define, an interface comment that is hard to state simply, or a decision table that does not scale all signal that the design is wrong. Fix the design, then update all three parts until they agree. The agent grills the human with questions until the behavior, the contracts, and the interfaces are nailed down. Planning is done when the three parts are consistent and the human approves them.
-
-   In this step the agent acts as planner and tester. It writes only the specification (features, schemas, interface declarations, and `plan/` when needed), never step definitions or implementation. The human constantly reviews and comments on features, schemas, and interface comments; the agent explains or fixes the specification in response.
-
-   A plan review is a read-only checkpoint inside this session. It checks the specification against the human's intent and the rules, surfaces drift, pitfalls, and gaps, and helps the human refocus. Experimenting then continues. Plan reviews are used iteratively and do not end the step.
-2. **Implement (agent).** Write the step definitions in `*/steps/` and the implementation in `libs/*/src/` and `apps/*/src/` so the existing features pass, using the types generated from the schemas.
-   - Features cannot enumerate every input and state. Structure the internals for property-based testing (pure functions with real invariants, state behind a small interface, I/O at the edges) and add property tests where they pay off. They complement the features (see "Testing rules").
-   - Implement to the specification. Do not change the features, schemas, or interface comments to fit the code. If the specification turns out to be wrong, stop and go back to step 1 with the human.
-   - The agent works autonomously and finishes only when `{{CMD_CHECK}}` and `{{CMD_TEST}}` pass.
-3. **Review (review agent).** Review the end result against the features, the schemas, and the rules in this file. Cover security, boundary rules, correctness, design quality, test strength (`{{CMD_MUTATION}}` on the changed modules), and fidelity to the specification.
-   - Directly fix anything that is an easy, obvious, local code fix, without reporting it.
-   - Never change features, schemas, or interface comments, and never make a fix that would invalidate them. A problem in the specification itself is not fixed in code; it goes back to Plan.
-   - Report only substantial findings that need the human: design changes, security issues without an obvious fix, and anything touching the specification.
-   - End with a self-contained handoff. The human can paste it into a fresh Plan session to settle the findings, resolve them directly, or run a follow-up Implement. Then the human commits the step.
-4. **Iterate.** Repeat from step 1 with what was learned.
+Plans, decisions, and open questions that span steps live in `plan/`. Implementation follows the specification and never changes it to fit the code. If the specification is wrong, contradictory, or impossible to meet, stop and raise it with the human.
 
 # Testing rules (BDD, features first)
 
@@ -179,7 +163,7 @@ Testing responsibilities follow the architecture:
 - **Property tests complement features (implementer-owned).** Features describe a module's overall behavior through its public interface, in a few readable scenarios. They cannot also cover every permutation of input and state: enumerating cases at the top level does not scale, and a scenario per edge case turns the specification into noise. So the implementer covers the rest.
   - Structure the internals so the right code can be tested directly with property-based tests: pure functions with real invariants, state behind a small interface, I/O at the edges. Add property tests where they pay off.
   - The split is: features say *what the module does*; property tests say *what must hold for every input and sequence* inside it. Neither replaces the other, and neither is a reason to weaken the other.
-  - Use {{PBT_TOOL}}. Property tests are not part of the specification; the implementer decides where they are worth writing. Report each one added in a short list, with the reason it earns its place.
+  - Use {{PBT_TOOL}}. Property tests are not part of the specification; the implementer decides where they are worth writing.
   - Do not overdo it. A property is justified only when it is idiomatic and makes good use of generated input, never to pad coverage.
   - Put them beside the code at {{PROPERTY_TEST_LOCATION}}. Shared generators go in {{GENERATOR_LOCATION}}. Neither is part of the public interface, so both stay private to the module. `{{CMD_TEST}}` runs them after the features.
   - Assert properties, not examples. Good properties include:
@@ -276,21 +260,3 @@ Mechanical checks back the rules above. When a check fails, fix the code. Never 
 | Boundary validation and generated types | {{SCHEMA_VALIDATOR}} and {{SCHEMA_CODEGEN}}, via `{{CMD_CHECK}}` |
 | Behavior and invariants | {{BDD_TOOL}} and {{PBT_TOOL}}, via `{{CMD_TEST}}` |
 | Test strength | {{MUTATION_TOOL}}, via `{{CMD_MUTATION}}` |
-
-# Checklist (implementer and reviewer)
-
-Run through this before finishing, and when reviewing:
-
-- **I/O separated from logic?** The core has no storage, file, network, clock, or randomness access, and the shell has no business rules.
-- **Core modelled well?** Domain states are ADTs, matching is exhaustive, and branching rules are complete, unambiguous decision tables. Any table that no longer scales was raised with the human.
-- **Module deep?** It has a simple interface over rich hidden behavior.
-- **Information hidden?** Internals can change without breaking callers.
-- **Errors minimized?** Errors are defined away, masked, or aggregated, rather than pushed to callers.
-- **Complexity pulled down?** The module handles edge cases so callers do not have to.
-- **Layers distinct?** Each layer is a distinct abstraction, with no pass-through functions.
-- **Interface comments useful?** They say what a caller needs, without exposing internals.
-- **Boundaries validated?** Every boundary is validated at entry against its schema, with no unchecked casts.
-- **Features test behavior?** Features target the public interface only, with no assertions on internals.
-- **Properties meaningful?** Domain invariants are covered by properties, not single examples.
-- **Assertions effective?** The tests kill mutants of the changed logic.
-- **Checks green?** `{{CMD_CHECK}}` and `{{CMD_TEST}}` pass.

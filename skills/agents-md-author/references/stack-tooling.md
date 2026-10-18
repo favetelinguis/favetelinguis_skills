@@ -1,6 +1,7 @@
 # Stack tooling map
 
-Default values for the stack placeholders in `assets/AGENTS.md.template`, per language.
+Default values for the stack placeholders in `assets/AGENTS.md.template` and the prompt
+templates in `assets/pi-prompts/`, per language.
 Prefer a tool the project already uses when it can satisfy the rule.
 Tool names, flags, and draft support drift over time: confirm each command with the tool's
 `--help` or docs before writing it into AGENTS.md.
@@ -52,6 +53,7 @@ Contents
 - SCHEMA_VALIDATOR: Ajv (`ajv/dist/2020`) with `ajv-formats`
 - SCHEMA_CODEGEN: `json-schema-to-typescript`. Import generated types only with `import type`.
 - SCHEMA_MODULE: `@repo/schema`
+- STUB_BODY: `throw new Error("not implemented")`
 - GENERATED_DIR: `**/src/generated/`
 - UNCHECKED_CAST_EXAMPLES: `as`, non-null `!`, `any`, hand-written guards such as `isRecord`
 - Typical commands: `pnpm check`, `pnpm test`, `pnpm test:live`, `pnpm gen`, `pnpm mutation`
@@ -81,6 +83,7 @@ Contents
 - SCHEMA_CODEGEN: datamodel-code-generator with `--output-model-type typing.TypedDict`. Validated
   dicts are typed without a second validation layer.
 - SCHEMA_MODULE: `repo_schema` (in `libs/schema`)
+- STUB_BODY: `raise NotImplementedError`
 - GENERATED_DIR: `**/_generated/`
 - UNCHECKED_CAST_EXAMPLES: `typing.cast`, `Any`, `# type: ignore`, `isinstance`-based hand guards,
   using `json.loads` output directly
@@ -112,6 +115,7 @@ Contents
 - SCHEMA_CODEGEN: typify, from `build.rs` into `OUT_DIR`. It supports a subset of JSON Schema, so keep
   schemas inside that subset and note it under Project deviations.
 - SCHEMA_MODULE: the `schema` crate in `libs/schema`
+- STUB_BODY: `todo!()`
 - GENERATED_DIR: `target/` (build.rs `OUT_DIR`)
 - UNCHECKED_CAST_EXAMPLES: `serde_json::from_*::<T>` on boundary data without schema validation,
   `.unwrap()` on parsed input, `transmute`
@@ -142,6 +146,7 @@ Contents
 - SCHEMA_CODEGEN: `github.com/omissis/go-jsonschema` via `go generate`. Check its draft support
   against your schemas.
 - SCHEMA_MODULE: `libs/schema`
+- STUB_BODY: `panic("not implemented")`
 - GENERATED_DIR: `**/generated/`. Go culture commits generated code; this rule does not, so
   `{{CMD_CHECK}}` and `{{CMD_TEST}}` must run `go generate ./...` first.
 - UNCHECKED_CAST_EXAMPLES: type assertions on `any`, `map[string]any`, `json.Unmarshal` into a struct
@@ -172,6 +177,7 @@ Contents
 - SCHEMA_CODEGEN: jsonschema2pojo. It covers older drafts only, so keep schemas inside its supported
   subset and record that under Project deviations.
 - SCHEMA_MODULE: the `:libs:schema` subproject
+- STUB_BODY: `throw new UnsupportedOperationException()` (Kotlin: `TODO()`)
 - GENERATED_DIR: `build/generated/`
 - UNCHECKED_CAST_EXAMPLES: casts, `Map<String, Object>`, `@SuppressWarnings("unchecked")`,
   `ObjectMapper.readValue` without schema validation
@@ -199,6 +205,7 @@ Contents
 - SCHEMA_VALIDATOR: JsonSchema.Net (json-everything)
 - SCHEMA_CODEGEN: Corvus.JsonSchema
 - SCHEMA_MODULE: the `Repo.Schema` project
+- STUB_BODY: `throw new NotImplementedException()`
 - GENERATED_DIR: `**/Generated/`
 - UNCHECKED_CAST_EXAMPLES: casts, `dynamic`, null-forgiving `!`, `JsonSerializer.Deserialize<T>`
   without schema validation
@@ -217,5 +224,6 @@ Fill each placeholder by finding, in order of preference:
 5. The language's strongest mechanism for module privacy, plus a linter or architecture test that
    fails on cross-module internal imports.
 6. Its closest form of sum types with exhaustiveness checking.
+7. Its idiomatic "not implemented" body for a declared function (`STUB_BODY`).
 
 Never give up a rule silently because tooling is missing. Record every gap under Project deviations.

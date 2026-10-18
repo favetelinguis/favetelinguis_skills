@@ -3,17 +3,22 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Check a generated AGENTS.md against the agents-md-author template.
+"""Check a generated AGENTS.md and its prompt templates against the agents-md-author assets.
 
-Errors (exit 1):
+AGENTS.md errors (exit 1):
   - a section heading from the template is missing
   - an unfilled {{PLACEHOLDER}} remains
-Warnings (exit 0):
-  - canonical rule lines from the template were changed or removed
+Prompt template errors (exit 1), for each assets/pi-prompts/<name>.md:
+  - <prompts-dir>/<name>.md is missing
+  - an unfilled {{PLACEHOLDER}} remains
+  - the frontmatter has no description
+Warnings (exit 0), for every checked file:
+  - canonical lines from the template were changed or removed
   - TODO/TBD/FIXME markers
-  - file longer than --max-lines
+  - AGENTS.md longer than --max-lines
 
-Prints one JSON object to stdout.
+The prompts directory defaults to <AGENTS.md dir>/.pi/prompts. Use --no-prompts to check
+AGENTS.md alone. Prints one JSON object to stdout.
 """
 
 from __future__ import annotations
@@ -26,7 +31,9 @@ from pathlib import Path
 
 PLACEHOLDER = re.compile(r"\{\{[A-Z0-9_]+\}\}")
 MARKER = re.compile(r"\b(TODO|TBD|FIXME)\b")
-DEFAULT_TEMPLATE = Path(__file__).resolve().parent.parent / "assets" / "AGENTS.md.template"
+ASSETS = Path(__file__).resolve().parent.parent / "assets"
+DEFAULT_TEMPLATE = ASSETS / "AGENTS.md.template"
+DEFAULT_PROMPT_TEMPLATES = ASSETS / "pi-prompts"
 
 
 def headings(lines: list[str]) -> list[str]:
@@ -50,11 +57,44 @@ def canonical_lines(lines: list[str]) -> list[str]:
     ]
 
 
+def common_checks(label: str, out_lines: list[str], tpl_lines: list[str], errors: list[str], warnings: list[str]) -> None:
+    """Placeholder, marker, and canonical-line checks shared by every generated file."""
+    for number, line in enumerate(out_lines, 1):
+        for match in PLACEHOLDER.findall(line):
+            errors.append(f"{label}:{number}: unfilled placeholder {match}")
+        if MARKER.search(line):
+            warnings.append(f"{label}:{number}: marker: {line.strip()[:80]}")
+
+    output_set = {line.strip() for line in out_lines}
+    changed = [line for line in canonical_lines(tpl_lines) if line not in output_set]
+    if changed:
+        warnings.append(
+            f"{label}: {len(changed)} canonical line(s) changed or removed; "
+            "record intended changes under 'Project deviations' in AGENTS.md"
+        )
+        warnings.extend(f"{label}: changed: {line[:100]}" for line in changed[:15])
+
+
+def has_description(lines: list[str]) -> bool:
+    """True when the file opens with YAML frontmatter containing a non-empty description."""
+    if not lines or lines[0].strip() != "---":
+        return False
+    for line in lines[1:]:
+        if line.strip() == "---":
+            return False
+        if re.match(r"^description:\s*\S", line):
+            return True
+    return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("agents_md", type=Path, help="Path to the generated AGENTS.md")
-    parser.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE, help="Template to compare against")
-    parser.add_argument("--max-lines", type=int, default=400, help="Warn above this many lines (default 400)")
+    parser.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE, help="AGENTS.md template to compare against")
+    parser.add_argument("--prompts-dir", type=Path, help="Generated prompt templates (default: <AGENTS.md dir>/.pi/prompts)")
+    parser.add_argument("--prompt-templates", type=Path, default=DEFAULT_PROMPT_TEMPLATES, help="Prompt template assets to compare against")
+    parser.add_argument("--no-prompts", action="store_true", help="Check AGENTS.md only")
+    parser.add_argument("--max-lines", type=int, default=400, help="Warn when AGENTS.md exceeds this many lines (default 400)")
     args = parser.parse_args()
 
     for path in (args.agents_md, args.template):
@@ -62,35 +102,46 @@ def main() -> int:
             print(f"error: file not found: {path}", file=sys.stderr)
             return 2
 
-    out_lines = args.agents_md.read_text(encoding="utf-8").splitlines()
-    tpl_lines = args.template.read_text(encoding="utf-8").splitlines()
     errors: list[str] = []
     warnings: list[str] = []
 
+    out_lines = args.agents_md.read_text(encoding="utf-8").splitlines()
+    tpl_lines = args.template.read_text(encoding="utf-8").splitlines()
     present = set(headings(out_lines))
     for heading in headings(tpl_lines):
         if heading not in present:
-            errors.append(f"missing heading: {heading}")
-
-    for number, line in enumerate(out_lines, 1):
-        for match in PLACEHOLDER.findall(line):
-            errors.append(f"line {number}: unfilled placeholder {match}")
-        if MARKER.search(line):
-            warnings.append(f"line {number}: marker: {line.strip()[:80]}")
-
-    output_set = {line.strip() for line in out_lines}
-    changed = [line for line in canonical_lines(tpl_lines) if line not in output_set]
-    if changed:
-        warnings.append(
-            f"{len(changed)} canonical rule line(s) changed or removed; "
-            "record intended changes under 'Project deviations'"
-        )
-        warnings.extend(f"changed: {line[:100]}" for line in changed[:15])
-
+            errors.append(f"AGENTS.md: missing heading: {heading}")
+    common_checks("AGENTS.md", out_lines, tpl_lines, errors, warnings)
     if len(out_lines) > args.max_lines:
-        warnings.append(f"{len(out_lines)} lines exceeds {args.max_lines}; trim project sections, not rules")
+        warnings.append(f"AGENTS.md: {len(out_lines)} lines exceeds {args.max_lines}; trim project sections, not rules")
 
-    print(json.dumps({"ok": not errors, "lines": len(out_lines), "errors": errors, "warnings": warnings}, indent=2))
+    prompts_checked: list[str] = []
+    if not args.no_prompts:
+        prompts_dir = args.prompts_dir or args.agents_md.resolve().parent / ".pi" / "prompts"
+        templates = sorted(args.prompt_templates.glob("*.md"))
+        if not templates:
+            print(f"error: no prompt templates in {args.prompt_templates}", file=sys.stderr)
+            return 2
+        for template in templates:
+            target = prompts_dir / template.name
+            label = f".pi/prompts/{template.name}"
+            if not target.is_file():
+                errors.append(f"{label}: missing (expected {target})")
+                continue
+            prompt_lines = target.read_text(encoding="utf-8").splitlines()
+            if not has_description(prompt_lines):
+                errors.append(f"{label}: frontmatter has no description")
+            common_checks(label, prompt_lines, template.read_text(encoding="utf-8").splitlines(), errors, warnings)
+            prompts_checked.append(label)
+
+    result = {
+        "ok": not errors,
+        "lines": len(out_lines),
+        "prompts": prompts_checked,
+        "errors": errors,
+        "warnings": warnings,
+    }
+    print(json.dumps(result, indent=2))
     return 1 if errors else 0
 
 
