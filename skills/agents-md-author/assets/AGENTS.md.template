@@ -10,7 +10,7 @@
 
 A module is one {{MODULE_UNIT}} under `libs/` (or an app under `apps/`). Every module is a boundary (see Data validation rules).
 
-This table is a living record, not a plan. List only modules that the specification (features, schemas, interface comments) already contains, and keep each row in step with it. The Plan step adds, revises, merges, or removes rows as the design is discovered. Never invent a module to fill the table.
+This table is a living record, not a plan. List only modules that the specification (features, contracts, interface comments) already contains, and keep each row in step with it. The Plan step adds, revises, merges, or removes rows as the design is discovered. Never invent a module to fill the table.
 
 | Module | Owns (responsibility and the decisions it hides) | Public interface |
 | --- | --- | --- |
@@ -36,7 +36,7 @@ These are agreed exceptions to the rules below, each with its reason. Everything
 
 - Do not add tests (feature files or scenarios) unless you are explicitly instructed to act as a tester. The one exception is property tests (see "Testing rules"). The implementer writes them to cover the permutations the features cannot, and they never replace or weaken a feature.
 - Do not add documentation unless you are explicitly instructed to act as a planner.
-- Do not weaken a scenario, or change a schema's contract, just to make code pass. Raise it with the human instead.
+- Do not weaken a scenario, or change a contract, just to make code pass. Raise it with the human instead.
 - Do not commit. Every step ends with a commit made by the human after review.
 
 # Architecture
@@ -92,7 +92,7 @@ Every module strictly separates computation from I/O:
   - split the table along its dominant condition into smaller tables;
   - an explicit state machine;
   - composed predicate or scoring functions;
-  - a rule set held as validated data (schema-governed), interpreted by the core.
+  - a rule set held as validated data (a boundary type), interpreted by the core.
 
 # Design principles (A Philosophy of Software Design)
 
@@ -119,20 +119,20 @@ This project strictly follows the design principles of John Ousterhout's *A Phil
 - **General-purpose interfaces.** Design the interface for the capability, not for the current caller. Make it somewhat more general than today's need, but not speculative. Keep general-purpose mechanism in lower layers, and special-purpose policy and business logic above it.
 - **Different layers, different abstractions.** Each layer offers an abstraction distinct from the layers around it. A pass-through, meaning a function that mostly forwards to another with similar arguments, means the layering is wrong. Merge the layers or move the responsibility.
 - **Comments and names capture what code cannot:** intent, rationale, invariants, and the abstraction, not a restatement of the code. Code comments are part of the code, not "documentation" in the sense of the guardrails above.
-  - *Interface comments* sit above every public function, type, and schema. They say what it does and what a caller must know, so it can be used without reading the body. *Implementation comments* explain only tricky logic inside a function.
+  - *Interface comments* sit above every public function and type, and every operation and message in a contract. They say what it does and what a caller must know, so it can be used without reading the body. *Implementation comments* explain only tricky logic inside a function.
   - Interface comments are part of the specification (see Way of working), so they are written before the implementation. If a module is hard to describe simply, its design is probably wrong. Redesign it before implementing.
   - Pick precise, consistent names. A name that is vague, or that needs a comment to be understood, is a design smell.
 - **How this shapes the rules below:**
   - *Features and steps* test a module's behavior only through its public interface, never its internals.
     - A deep module needs few scenarios at its boundary, and those scenarios survive refactors of the hidden implementation.
     - Step definitions are deep too: a few reusable, high-level steps and a World that hides setup. Write no step per internal function, and no step that reaches into internals.
-  - *Schemas* sit on the public interface, so they define the small contract the module exposes. There is one per piece of data its public functions accept (Rule 2).
+  - *Boundary types* sit on the public interface, so they define the small contract the module exposes. There is one per piece of data its public functions accept (Rule 2).
     - Validation happens inside the module, as the first thing a public function does. Callers cannot misuse it and need no knowledge of the checks.
-    - Do not add schemas for data that stays inside a module. That exposes internals and creates shallow boundaries.
-  - *Errors and validation:* a schema violation is one aggregated error type per boundary (Rules 1 and 2), raised at entry. The rest of the module then runs on trusted data with no defensive checks.
+    - Do not add constraints or boundary types for data that stays inside a module. That exposes internals and creates shallow boundaries.
+  - *Errors and validation:* a validation failure is one aggregated error type per boundary (Rules 1 to 3), raised at entry. The rest of the module then runs on trusted data with no defensive checks.
     - Do not scatter ad-hoc validation or error handling through the internals. Error messages still never contain the failed data.
     - Features specify error behavior only where it is part of the public interface: the error a caller sees, not how the module recovers internally.
-  - A change that widens an interface, adds a pass-through module, or adds a feature, step, or schema only to cover an internal detail must be justified to the human, or redesigned.
+  - A change that widens an interface, adds a pass-through module, or adds a feature, step, boundary type, or contract only to cover an internal detail must be justified to the human, or redesigned.
 
 # Way of working
 
@@ -141,7 +141,7 @@ Work proceeds in small steps: Plan, then Implement, then Review. Each step ends 
 The **specification** is three parts, kept consistent with each other and written before the implementation:
 
 - behavior: Gherkin features in `libs/*/features/` and `apps/*/features/`;
-- contracts: JSON Schemas in `libs/*/schemas/` and `apps/*/schemas/`;
+- contracts: boundary types with their declared constraints on each module's public interface, plus OpenAPI documents and `.proto` files in `libs/*/contracts/` and `apps/*/contracts/` for HTTP and gRPC;
 - interfaces: interface comments on public functions and types, including the core's ADTs and the shape of its decision tables.
 
 Plans, decisions, and open questions that span steps live in `plan/`. Implementation follows the specification and never changes it to fit the code. If the specification is wrong, contradictory, or impossible to meet, stop and raise it with the human.
@@ -163,7 +163,7 @@ Testing responsibilities follow the architecture:
 - Tests run offline by default: local servers, dummy credentials, temporary databases.
   - A scenario or whole feature that calls a real live service (see Project) must be tagged `@live`, above the `Scenario` or above `Feature:`. Run these with `{{CMD_TEST_LIVE}}`.
   - `{{CMD_TEST}}` excludes `@live`. Never make it need credentials.
-- Schema and validator behavior is covered by the owning module's features, like any other behavior.
+- Validation behavior is covered by the owning module's features, like any other behavior.
 - **Property tests complement features (implementer-owned).** Features describe a module's overall behavior through its public interface, in a few readable scenarios. They cannot also cover every permutation of input and state: enumerating cases at the top level does not scale, and a scenario per edge case turns the specification into noise. So the implementer covers the rest.
   - Structure the internals so the right code can be tested directly with property-based tests: pure functions with real invariants, state behind a small interface, I/O at the edges. Add property tests where they pay off.
   - The split is: features say *what the module does*; property tests say *what must hold for every input and sequence* inside it. Neither replaces the other, and neither is a reason to weaken the other.
@@ -183,7 +183,7 @@ Testing responsibilities follow the architecture:
     - Pick the pure, invariant-rich parts and test the invariant, not the incidental structure.
     - A property that only restates the implementation, or breaks on every refactor, is a defect. Delete it rather than adapt it.
     - Code with no real invariant (wiring, glue) needs no property test; a feature covers it.
-  - A generator that stands for schema-governed data is checked against its schema through `{{SCHEMA_MODULE}}` in a property, so the two cannot drift. Never share generators with other modules.
+  - A generator that stands for boundary data is checked against its boundary type's validator through `{{VALIDATION_MODULE}}` in a property, so the two cannot drift. Never share generators with other modules.
   - A failing property is a finding, not an obstacle.
     - Fix the code, or if the property is wrong, correct it for a stated reason. Never weaken or delete a property only to make code pass.
     - When a counterexample is reported, keep it as a permanent regression case ({{PBT_REGRESSION}}).
@@ -195,11 +195,11 @@ Testing responsibilities follow the architecture:
   - An equivalent mutant is ignored only with a stated reason.
 - A passing feature proves only what it checks. Do not claim more coverage than the scenarios verify.
 
-# Data validation rules (JSON Schema)
+# Data validation rules (native types)
 
-Data crossing a boundary is described by a JSON Schema (draft 2020-12), validated with {{SCHEMA_VALIDATOR}} through `{{SCHEMA_MODULE}}`, and typed by {{LANGUAGE}} types generated from the schema with {{SCHEMA_CODEGEN}}. The schema is the single source of truth. These are rules, not guidance. Code that breaks them is a defect to fix in the same change. There are no exceptions.
+Data crossing a boundary is described by {{LANGUAGE}} types. Shape is the type itself; invariants are declared on it with {{CONSTRAINT_MECHANISM}}. It is checked at runtime by {{VALIDATOR}} through `{{VALIDATION_MODULE}}`. The type is the single source of truth: never hand-write a JSON Schema or a parallel validator for it. The one exception is wire protocols (Rule 3). These are rules, not guidance. Code that breaks them is a defect to fix in the same change. There are no exceptions.
 
-**Rule 1: external boundaries.** Every value that enters the process from outside the type system is validated against a schema owned by the receiving module before it is used or typed. That includes everything listed under External boundaries, and always:
+**Rule 1: external boundaries.** Every value that enters the process from outside the type system is validated against a boundary type owned by the receiving module before it is used. That includes everything listed under External boundaries, and always:
 
 - environment variables;
 - files read from disk;
@@ -211,26 +211,35 @@ Data crossing a boundary is described by a JSON Schema (draft 2020-12), validate
 
 **Rule 2: module boundaries.** Every module is a boundary. Data that crosses from one module into another through its public interface ({{PUBLIC_API_MECHANISM}}) is untrusted by the receiver, however it is typed.
 
-- The exporting module owns the contract: one `*.schema.json` in its own `schemas/` for each piece of data its public functions accept. The schema is the only definition. Consumers import the generated type and never redefine it.
+- The exporting module owns the contract: each piece of data its public functions accept is a boundary type declared in its public interface, with its constraints. That declaration is the only definition. Consumers import the type and never redefine it.
 - The receiver validates on entry, as the first thing the public function does. Return values are not re-validated.
-- Scope is data only: plain values that JSON Schema can express.
+- Scope is data only: plain values such as records, unions, collections, and scalars.
   - Classes, functions, callbacks, clients, handles, and library objects are not data, and are typed in {{LANGUAGE}} only.
   - If a public function takes both, validate the data part.
-- A scalar needs a schema only when its validity is narrower than its {{LANGUAGE}} type, such as an email address or a model reference. A plain string or number does not.
-- A type the generator cannot express may stay hand-written, but only with a compile-time (or, failing that, test-time) check that it matches the generated type, so the two cannot drift. Where validated data must re-enter a library's own type, convert it once, at that point.
+- A scalar needs a constraint only when its validity is narrower than its {{LANGUAGE}} type, such as an email address or a model reference. Declare it as {{CONSTRAINED_SCALAR_FORM}}. A plain string or number needs none.
+- Prefer making an invalid combination unrepresentable (a sum type) over checking it. A cross-field invariant that still needs a check is declared as {{CROSS_FIELD_FORM}}, so it runs in the same validation and fails with the same error.
 
-**How to apply both rules**
+**Rule 3: wire protocols are contract-first.** An HTTP interface is specified by an OpenAPI document, and a gRPC interface by `.proto` files, in the owning module's `contracts/`. The contract is written first and is the single source of truth: code is generated from it ({{OPENAPI_TOOLING}}; {{PROTOBUF_TOOLING}}), never the reverse.
+
+- This covers interfaces the project serves, and third-party APIs that publish an OpenAPI document or `.proto` files. Any other external API is handled under Rule 1 with native types.
+- Requests and messages are validated against the contract on entry, including its constraints.
+- Generated wire types stay in the adapter that serves or calls the interface. The adapter converts them to native types once, at entry, and never passes them into the core or another module.
+- Internal modules never talk over HTTP or gRPC (see Architecture). Rules 1 and 2 apply to them.
+
+**How to apply the rules**
 
 - Never give boundary data a type with an unchecked cast or a hand-written guard ({{UNCHECKED_CAST_EXAMPLES}}).
-- Use the `{{SCHEMA_MODULE}}` helpers. Do not create ad-hoc validator instances.
-  - Strict mode is the default.
+- Run validation only through the `{{VALIDATION_MODULE}}` helpers. Declare each validator once, beside its type, with {{VALIDATOR_DECLARATION}}. Do not create ad-hoc validator instances.
+  - Strict mode is the default: unknown properties are rejected.
   - Type coercion and defaults are for environment variables only.
-- Validation errors must never contain the data that failed. Boundary data can hold credentials or private content.
-- A new boundary adds its schema in the same change.
-  - If implementation uncovers a boundary the plan did not cover, add the schema and call it out for the reviewer.
+- Validation errors must never contain the data that failed: only the path and the violated constraint. Boundary data can hold credentials or private content.
+- Where a library needs a JSON Schema (for example a model's tool definition), derive it from the boundary type with {{JSON_SCHEMA_EXPORT}}. Never hand-write it.
+- A new boundary adds its boundary type or contract in the same change.
+  - If implementation uncovers a boundary the plan did not cover, add it and call it out for the reviewer.
   - Touching an existing unvalidated boundary means migrating it.
-- Generated types are never committed (`{{GENERATED_DIR}}` is git-ignored). Run `{{CMD_GEN}}` (or `{{CMD_CHECK}}`) after changing a schema.
+- Code generated from contracts is never committed (`{{GENERATED_DIR}}` is git-ignored). Run `{{CMD_GEN}}` (or `{{CMD_CHECK}}`) after changing a contract.
 - Data created and consumed inside one module, and typed there, is not a boundary.
+- Where validated data must re-enter a library's own type, convert it once, at that point.
 
 # Stack and commands
 
@@ -249,7 +258,7 @@ Data crossing a boundary is described by a JSON Schema (draft 2020-12), validate
 | `{{CMD_CHECK}}` | Code generation, type check, lint, format check, boundary, exhaustiveness, and interface-comment checks |
 | `{{CMD_TEST}}` | All features, then all property tests; offline, excludes `@live` |
 | `{{CMD_TEST_LIVE}}` | `@live` scenarios against real services (needs credentials) |
-| `{{CMD_GEN}}` | Generate types from schemas |
+| `{{CMD_GEN}}` | Generate code from OpenAPI and protobuf contracts |
 | `{{CMD_MUTATION}}` | Mutation testing |
 
 ## Enforcement
@@ -261,6 +270,7 @@ Mechanical checks back the rules above. When a check fails, fix the code. Never 
 | Module encapsulation | {{BOUNDARY_ENFORCEMENT}} |
 | Exhaustive handling of domain ADTs | {{ADT_ENFORCEMENT}} |
 | Interface comments on public declarations | {{INTERFACE_COMMENT_ENFORCEMENT}} |
-| Boundary validation and generated types | {{SCHEMA_VALIDATOR}} and {{SCHEMA_CODEGEN}}, via `{{CMD_CHECK}}` |
+| Boundary types and validation | {{VALIDATOR}}, via `{{CMD_CHECK}}` |
+| Wire contracts | {{CONTRACT_CHECKS}}, via `{{CMD_CHECK}}` |
 | Behavior and invariants | {{BDD_TOOL}} and {{PBT_TOOL}}, via `{{CMD_TEST}}` |
 | Test strength | {{MUTATION_TOOL}}, via `{{CMD_MUTATION}}` |

@@ -1,33 +1,40 @@
 # Stack tooling map
 
 Default values for the stack placeholders in `assets/AGENTS.md.template` and the prompt
-templates in `assets/pi-prompts/`, per language.
+templates in `assets/pi-prompts/`, per language. The supported stacks are TypeScript and Java.
 Prefer a tool the project already uses when it can satisfy the rule.
-Tool names, flags, and draft support drift over time: confirm each command with the tool's
+Tool names, flags, and APIs drift over time: confirm each command with the tool's
 `--help` or docs before writing it into AGENTS.md.
 
 Contents
 
 - [Shared conventions (all languages)](#shared-conventions-all-languages)
 - [TypeScript / Node](#typescript--node)
-- [Python](#python)
-- [Rust](#rust)
-- [Go](#go)
 - [JVM: Java 21+ / Kotlin](#jvm-java-21--kotlin)
-- [.NET: C#](#net-c)
 - [Any other language](#any-other-language)
 
 ## Shared conventions (all languages)
 
 - Layout is `apps/<app>/` (deployable entry points: wiring and the outermost shell) plus
-  `libs/<module>/`, each with `features/`, `steps/`, `schemas/`, `src/`, and `plan/` at the root.
+  `libs/<module>/`, each with `features/`, `steps/`, `src/`, and `plan/` at the root, and
+  `contracts/` only in a module that serves or calls an HTTP or gRPC interface.
   Adapt only what the toolchain forces (e.g. Gradle `src/main/...`), and say so in the layout tree.
-- `{{SCHEMA_MODULE}}` is one shared module, conventionally `libs/schema`. It is itself a deep module:
-    - It compiles each schema once, in strict mode, with `$schema` draft 2020-12.
+- Internal boundaries use native types only. Boundary types live in the owning module's public
+  interface, with their constraints declared on the type. No JSON Schema files, no codegen.
+- `{{VALIDATION_MODULE}}` is one shared module, conventionally `libs/boundary`. It is itself a deep
+  module:
     - It exposes a single "validate or raise one aggregated boundary error" function.
-    - Its errors carry the schema path and keyword, never the failing value.
+    - It is strict: unknown properties are rejected.
+    - Its errors carry the path and the violated constraint, never the failing value. The
+      underlying validators do include the value, so it strips it.
+- HTTP and gRPC are contract-first (Rule 3). The OpenAPI document (3.1) or `.proto` files in
+  `contracts/` are written during `/vibe`. `{{CMD_GEN}}` generates code from every contract into
+  `{{GENERATED_DIR}}`, and is a no-op while no contracts exist, so it can be wired on day one.
+- Protobuf uses Buf for every language: `buf generate`, `buf lint`, `buf breaking`, with
+  protovalidate (`buf.validate` field options) for constraints that proto3 cannot express.
 - `{{CMD_TEST}}` runs the features (excluding `@live`), then the property tests.
-- `{{CMD_CHECK}}` runs codegen first, then type check, lint, format check, and the boundary checks.
+- `{{CMD_CHECK}}` runs codegen first, then type check, lint, format check, contract lint, and the
+  boundary checks.
 - Decision-table completeness needs a check: use the compiler where it can check exhaustiveness,
   otherwise a property that enumerates the condition product.
 
@@ -50,109 +57,35 @@ Contents
 - PBT_REPLAY: `fc.assert(property, { seed, path })`
 - MUTATION_TOOL: StrykerJS. Use the `command` test runner to run the same test command, because node:test
   has no dedicated runner. Cucumber steps can use `@stryker-mutator/cucumber-runner`.
-- SCHEMA_VALIDATOR: Ajv (`ajv/dist/2020`) with `ajv-formats`
-- SCHEMA_CODEGEN: `json-schema-to-typescript`. Import generated types only with `import type`.
-- SCHEMA_MODULE: `@repo/schema`
+- VALIDATOR: typia, applied by its compile-time transform
+- CONSTRAINT_MECHANISM: typia type tags intersected into the type (`tags.MinLength<1>`,
+  `tags.Format<"email">`, `tags.Pattern<"...">`, `tags.Minimum<0>`, `tags.Type<"uint32">`)
+- CONSTRAINED_SCALAR_FORM: a named, exported type alias with tags, such as
+  `type Email = string & tags.Format<"email">`
+- CROSS_FIELD_FORM: a named refinement function passed to the same `@repo/boundary` call, reporting
+  a path and a constraint name
+- VALIDATOR_DECLARATION: `typia.createValidateEquals<T>()` (the `Equals` variant rejects unknown properties)
+- VALIDATION_MODULE: `@repo/boundary`
+- JSON_SCHEMA_EXPORT: `typia.json.schema<T>()`, or `typia.llm.parameters<T>()` for model tool definitions
+- OPENAPI_TOOLING: `openapi-typescript` for types, and request and response validation against the
+  document with the HTTP framework's OpenAPI validator (e.g. `express-openapi-validator`;
+  `fastify-openapi-glue` for Fastify)
+- PROTOBUF_TOOLING: `buf generate` with `protoc-gen-es` and Connect-ES (`@connectrpc/connect`),
+  validated with `@bufbuild/protovalidate`
+- CONTRACT_CHECKS: `redocly lint` for OpenAPI, `buf lint` and `buf breaking` for protobuf
 - STUB_BODY: `throw new Error("not implemented")`
 - GENERATED_DIR: `**/src/generated/`
-- UNCHECKED_CAST_EXAMPLES: `as`, non-null `!`, `any`, hand-written guards such as `isRecord`
+- UNCHECKED_CAST_EXAMPLES: `as`, non-null `!`, `any`, hand-written guards such as `isRecord`,
+  `JSON.parse` output used directly, `typia.assert` or `typia.is` called outside `@repo/boundary`
 - Typical commands: `pnpm check`, `pnpm test`, `pnpm test:live`, `pnpm gen`, `pnpm mutation`
-
-## Python
-
-- MODULE_UNIT: uv workspace member package
-- PUBLIC_API_MECHANISM: names in the package `__init__.py` `__all__`. Everything else lives in
-  `_private` submodules.
-- BOUNDARY_ENFORCEMENT: import-linter contracts (`lint-imports`) that forbid importing another
-  module's private submodules and keep modules independent
-- ADT_ENFORCEMENT: frozen dataclasses joined in a union type alias. Handle them with `match` +
-  `typing.assert_never`, under pyright strict with `reportMatchNotExhaustive`.
-- DECISION_TABLE_FORM: a module-level `Mapping[tuple[CondA, CondB], Outcome]` keyed by `Enum` members.
-  Completeness is asserted against `itertools.product` of the enums in a property.
-- INTERFACE_COMMENT_ENFORCEMENT: ruff pydocstyle rules `D1` (public docstrings)
-- BDD_TOOL: pytest-bdd. Tags become pytest markers, so use `-m "not live"` and register the `live` marker.
-- PBT_TOOL: Hypothesis (stateful testing: `RuleBasedStateMachine`)
-- PROPERTY_TEST_LOCATION: `libs/<module>/properties/test_<topic>.py`
-- GENERATOR_LOCATION: `libs/<module>/properties/strategies.py`
-- PBT_REGRESSION: an `@example(...)` decorator on the property
-- PBT_REPLAY: the printed `@reproduce_failure(...)`, or `--hypothesis-seed`. Git-ignore `.hypothesis/`.
-- MUTATION_TOOL: mutmut (`mutmut run`)
-- SCHEMA_VALIDATOR: `jsonschema` `Draft202012Validator` with a `FormatChecker`. It has no strict mode,
-  so the schema module runs `check_schema` and rejects schemas that lack
-  `additionalProperties`/`unevaluatedProperties: false`.
-- SCHEMA_CODEGEN: datamodel-code-generator with `--output-model-type typing.TypedDict`. Validated
-  dicts are typed without a second validation layer.
-- SCHEMA_MODULE: `repo_schema` (in `libs/schema`)
-- STUB_BODY: `raise NotImplementedError`
-- GENERATED_DIR: `**/_generated/`
-- UNCHECKED_CAST_EXAMPLES: `typing.cast`, `Any`, `# type: ignore`, `isinstance`-based hand guards,
-  using `json.loads` output directly
-- Typical commands: `uv run poe check` / `test` / `test-live` / `gen` / `mutation`. Any task runner
-  works; `poethepoet` is shown as an example.
-
-## Rust
-
-- MODULE_UNIT: crate in a Cargo workspace (`libs/<module>`, binary crate in `apps/<app>`)
-- PUBLIC_API_MECHANISM: `pub` items re-exported from `lib.rs`. Everything else is private or `pub(crate)`.
-- BOUNDARY_ENFORCEMENT: the crate dependency graph in `Cargo.toml` plus crate privacy, with the
-  `unreachable_pub` lint denied
-- ADT_ENFORCEMENT: enums + `match` (the compiler checks exhaustiveness). clippy
-  `wildcard_enum_match_arm` forbids `_` arms on domain enums. Do not mark domain enums `#[non_exhaustive]`.
-- DECISION_TABLE_FORM: a `match (a, b, c)` over a tuple of enums. The compiler checks completeness,
-  and overlapping rows show up as `unreachable_patterns` (denied).
-- INTERFACE_COMMENT_ENFORCEMENT: `#![deny(missing_docs)]`, plus clippy `missing_errors_doc` and `missing_panics_doc`
-- BDD_TOOL: the `cucumber` crate in a `harness = false` test target. It filters out `@live` unless an
-  env var such as `LIVE=1` is set.
-- PBT_TOOL: proptest (stateful testing: `proptest-state-machine`)
-- PROPERTY_TEST_LOCATION: a `#[cfg(test)] mod properties` in `src/<module>/properties.rs`, which has
-  private access
-- GENERATOR_LOCATION: `#[cfg(test)]` strategies in `src/strategies.rs`
-- PBT_REGRESSION: committed `proptest-regressions/` files, which proptest writes automatically
-- PBT_REPLAY: the regressions file replays the case. To pin a seed, use the `PROPTEST_RNG_SEED` env var.
-- MUTATION_TOOL: cargo-mutants (`cargo mutants`)
-- SCHEMA_VALIDATOR: the `jsonschema` crate (draft 2020-12). Validate a `serde_json::Value` before
-  deserializing it into the generated type.
-- SCHEMA_CODEGEN: typify, from `build.rs` into `OUT_DIR`. It supports a subset of JSON Schema, so keep
-  schemas inside that subset and note it under Project deviations.
-- SCHEMA_MODULE: the `schema` crate in `libs/schema`
-- STUB_BODY: `todo!()`
-- GENERATED_DIR: `target/` (build.rs `OUT_DIR`)
-- UNCHECKED_CAST_EXAMPLES: `serde_json::from_*::<T>` on boundary data without schema validation,
-  `.unwrap()` on parsed input, `transmute`
-- Typical commands: `cargo xtask check` (fmt --check, clippy -D warnings), `cargo test`,
-  `LIVE=1 cargo test --test features`, `cargo build` (codegen runs in build.rs), `cargo mutants`
-
-## Go
-
-- MODULE_UNIT: package tree `libs/<module>/` in a single Go module (one `go.mod`)
-- PUBLIC_API_MECHANISM: exported identifiers of the `libs/<module>` root package. Internals live in
-  `libs/<module>/internal/...`.
-- BOUNDARY_ENFORCEMENT: the compiler-enforced `internal/` rule, plus golangci-lint `depguard` rules
-  for cross-module imports
-- ADT_ENFORCEMENT: a sealed interface (unexported marker method) + type switch, checked by
-  golangci-lint `gochecksumtype` (`//sumtype:decl`). Enum switches are checked by `exhaustive`.
-- DECISION_TABLE_FORM: a map keyed by a struct of enum values. Completeness is asserted in a property
-  over all enum combinations.
-- INTERFACE_COMMENT_ENFORCEMENT: golangci-lint `revive` rule `exported`
-- BDD_TOOL: godog through `TestMain`, with tags `~@live` by default and `@live` for live runs
-- PBT_TOOL: `pgregory.net/rapid` (stateful testing: `t.Repeat` with action maps)
-- PROPERTY_TEST_LOCATION: `<file>_property_test.go` in the same internal package
-- GENERATOR_LOCATION: `generators_test.go` in the same package
-- PBT_REGRESSION: the failfile committed under `testdata/rapid/`
-- PBT_REPLAY: `-rapid.failfile=...` or `-rapid.seed=...`
-- MUTATION_TOOL: gremlins (`gremlins unleash`). It is young; check that it is maintained, and fall
-  back to go-mutesting.
-- SCHEMA_VALIDATOR: `github.com/santhosh-tekuri/jsonschema/v6`
-- SCHEMA_CODEGEN: `github.com/omissis/go-jsonschema` via `go generate`. Check its draft support
-  against your schemas.
-- SCHEMA_MODULE: `libs/schema`
-- STUB_BODY: `panic("not implemented")`
-- GENERATED_DIR: `**/generated/`. Go culture commits generated code; this rule does not, so
-  `{{CMD_CHECK}}` and `{{CMD_TEST}}` must run `go generate ./...` first.
-- UNCHECKED_CAST_EXAMPLES: type assertions on `any`, `map[string]any`, `json.Unmarshal` into a struct
-  without schema validation
-- Typical commands: `make check` (generate, vet, golangci-lint), `make test`, `make test-live`, `make gen`,
-  `make mutation`
+- Gotchas:
+    - typia only works through its transform. Install it with `npx typia setup` (ts-patch), and run
+      features, properties, and Stryker on transformed output (`tsc`, or a bundler with
+      `@ryoppippi/unplugin-typia`). `tsx`, plain esbuild, and Node type stripping skip the transform,
+      and typia calls then throw at runtime.
+    - typia's validation errors include the failing value; `@repo/boundary` must drop it.
+    - `openapi-typescript` emits types only, without constraints, so the runtime validator is
+      required, not optional.
 
 ## JVM: Java 21+ / Kotlin
 
@@ -173,43 +106,43 @@ Contents
 - PBT_REGRESSION: an `@Example` method reproducing the shrunk counterexample
 - PBT_REPLAY: `@Property(seed = "...")`
 - MUTATION_TOOL: PIT via the `info.solidsoft.pitest` Gradle plugin with `pitest-junit5-plugin`
-- SCHEMA_VALIDATOR: `com.networknt:json-schema-validator` (draft 2020-12)
-- SCHEMA_CODEGEN: jsonschema2pojo. It covers older drafts only, so keep schemas inside its supported
-  subset and record that under Project deviations.
-- SCHEMA_MODULE: the `:libs:schema` subproject
+- VALIDATOR: Jakarta Bean Validation (Hibernate Validator)
+- CONSTRAINT_MECHANISM: Jakarta constraint annotations on record components (`@NotNull`, `@NotBlank`,
+  `@Size`, `@Pattern`, `@Email`, `@Min`/`@Max`, `@Valid` to cascade into nested records), including
+  type-use positions such as `List<@NotBlank String>`
+- CONSTRAINED_SCALAR_FORM: a single-component record with constraints on the component, such as
+  `record Email(@NotNull @jakarta.validation.constraints.Email String value)`, used with `@Valid`
+- CROSS_FIELD_FORM: a class-level custom constraint (an `@Constraint` annotation with a
+  `ConstraintValidator`) on the record
+- VALIDATOR_DECLARATION: its constraint annotations; Bean Validation needs no validator object per
+  type, only the one shared `Validator` inside `:libs:boundary`
+- VALIDATION_MODULE: the `:libs:boundary` subproject (`Boundary.check(value)`)
+- JSON_SCHEMA_EXPORT: victools `jsonschema-generator` with `jsonschema-module-jakarta-validation`
+- OPENAPI_TOOLING: the `org.openapi.generator` Gradle plugin with `useBeanValidation=true` and
+  `useJakartaEe=true` (server: `spring` with `interfaceOnly=true`, or `jaxrs-spec`; client: `java`),
+  so generated models carry Jakarta constraints and are validated the same way
+- PROTOBUF_TOOLING: `buf generate` with `protoc-gen-java` and `protoc-gen-grpc-java`, validated
+  with `build.buf:protovalidate`
+- CONTRACT_CHECKS: `redocly lint` for OpenAPI, `buf lint` and `buf breaking` for protobuf
 - STUB_BODY: `throw new UnsupportedOperationException()` (Kotlin: `TODO()`)
 - GENERATED_DIR: `build/generated/`
 - UNCHECKED_CAST_EXAMPLES: casts, `Map<String, Object>`, `@SuppressWarnings("unchecked")`,
-  `ObjectMapper.readValue` without schema validation
-- Typical commands: `./gradlew check`, `./gradlew test`, `./gradlew liveTest`, `./gradlew generateJsonSchema2Pojo`,
+  `ObjectMapper.readValue` without `Boundary.check`, `ConstraintViolation.getInvalidValue()` or
+  `${validatedValue}` in a constraint message
+- Typical commands: `./gradlew check`, `./gradlew test`, `./gradlew liveTest`,
+  `./gradlew generateContracts` (an aggregate of `openApiGenerate` and `buf generate`),
   `./gradlew pitest`
-
-## .NET: C#
-
-- MODULE_UNIT: project (`.csproj`) in the solution
-- PUBLIC_API_MECHANISM: `public` types. Everything else is `internal`. `InternalsVisibleTo` is allowed
-  only for the module's own test project.
-- BOUNDARY_ENFORCEMENT: project references plus NetArchTest or ArchUnitNET rules in the test run
-- ADT_ENFORCEMENT: C# has no closed unions. Use Dunet (or OneOf) for generated exhaustive `Match`,
-  and never write `_ => throw` arms over domain types.
-- DECISION_TABLE_FORM: a `FrozenDictionary` keyed by a tuple of enums. Completeness is asserted in a
-  property, because enum switches are never compiler-exhaustive.
-- INTERFACE_COMMENT_ENFORCEMENT: `GenerateDocumentationFile` with CS1591 as an error
-- BDD_TOOL: Reqnroll. Tags become test categories, so use `dotnet test --filter "Category!=live"`.
-- PBT_TOOL: FsCheck (or CsCheck)
-- PROPERTY_TEST_LOCATION: the module's test project, `Properties/<Thing>Properties.cs`
-- GENERATOR_LOCATION: `Properties/<Module>Arbitraries.cs`
-- PBT_REGRESSION: an explicit test case reproducing the shrunk counterexample
-- PBT_REPLAY: FsCheck `Replay = "<seed>"`
-- MUTATION_TOOL: Stryker.NET (`dotnet stryker`)
-- SCHEMA_VALIDATOR: JsonSchema.Net (json-everything)
-- SCHEMA_CODEGEN: Corvus.JsonSchema
-- SCHEMA_MODULE: the `Repo.Schema` project
-- STUB_BODY: `throw new NotImplementedException()`
-- GENERATED_DIR: `**/Generated/`
-- UNCHECKED_CAST_EXAMPLES: casts, `dynamic`, null-forgiving `!`, `JsonSerializer.Deserialize<T>`
-  without schema validation
-- Typical commands: `dotnet build -warnaserror` + `dotnet format --verify-no-changes`, `dotnet test`, `dotnet stryker`
+- Gotchas:
+    - Cascading is opt-in: a nested record or collection element is validated only when the
+      component carries `@Valid`. Add an ArchUnit rule that every component whose type is a
+      boundary record is annotated `@Valid`.
+    - Jackson leaves a missing field `null`, so every required component needs `@NotNull`. Enable
+      `FAIL_ON_UNKNOWN_PROPERTIES` and `FAIL_ON_NULL_FOR_PRIMITIVES` on the shared `ObjectMapper`;
+      Spring Boot disables the first by default.
+    - Hibernate Validator needs an EL implementation (`org.glassfish.expressly:expressly`) or the
+      `ParameterMessageInterpolator`.
+    - Kotlin: target the field with `@field:NotBlank`, or the constraint is put on the constructor
+      parameter and ignored.
 
 ## Any other language
 
@@ -220,7 +153,9 @@ Fill each placeholder by finding, in order of preference:
 2. A property-based testing library with shrinking.
 3. A mutation testing tool. If none exists, say so under Project deviations, and have the
    reviewer hand-mutate core logic instead.
-4. A JSON Schema validator that supports draft 2020-12, and a schema-to-type generator.
+4. A runtime validator driven by the language's own type declarations, with constraints declared
+   on the type and errors that can be stripped of the failing value. Plus an OpenAPI generator and
+   a Buf plugin for that language.
 5. The language's strongest mechanism for module privacy, plus a linter or architecture test that
    fails on cross-module internal imports.
 6. Its closest form of sum types with exhaustiveness checking.

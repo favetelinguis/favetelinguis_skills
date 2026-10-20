@@ -2,19 +2,19 @@
 name: agents-md-author
 description: >-
   Writes or refreshes a project's AGENTS.md from a fixed engineering philosophy:
-  modular monolith, Ousterhout deep modules, a pure core modelled with algebraic
-  data types and decision tables behind an imperative shell, BDD features first,
-  property-based and mutation testing, JSON Schema validation at every boundary,
-  and a plan-implement-review workflow. Interviews the human about what the
-  project is for and which stack it uses, maps every rule onto that tooling,
-  wires the commands that enforce it, and installs project-local pi prompt
-  templates (/vibe, /vibe-review, /impl, /impl-review) that carry the workflow.
-  Works from a rough idea: modules and boundaries are discovered later through /vibe,
-  not required up front. Use when starting a new project or repo,
-  or when creating, regenerating, updating, or auditing AGENTS.md or CLAUDE.md,
-  agent instructions, coding guidelines, architecture rules, or the workflow
-  prompt templates for a codebase.
-  Not for writing skills, READMEs, or other documentation.
+  modular monolith, Ousterhout deep modules, a pure core of algebraic data types
+  and decision tables behind an imperative shell, BDD features first,
+  property-based and mutation testing, native-type validation at internal
+  boundaries (typia, Jakarta Bean Validation), contract-first OpenAPI and
+  protobuf for HTTP and gRPC, and a plan-implement-review workflow. Interviews
+  the human about the project's purpose and its TypeScript or Java stack, maps
+  every rule onto that tooling, wires the enforcing commands, and installs
+  project-local pi prompt templates (/vibe, /vibe-review, /impl, /impl-review).
+  Works from a rough idea; modules are discovered later through /vibe. Use when
+  starting a new project or repo, or when creating, regenerating, updating, or
+  auditing AGENTS.md or CLAUDE.md, agent instructions, coding guidelines,
+  architecture rules, or the workflow prompt templates for a codebase.
+  Not for skills, READMEs, or other documentation.
 ---
 
 # AGENTS.md author
@@ -43,23 +43,27 @@ goes under `## Project deviations` in `AGENTS.md`, with its reason.
 
 1. **Inspect the project.**
     - Read any existing `AGENTS.md`, `CLAUDE.md`, and README.
-    - Read the manifests and workspace configs (`package.json`, `pyproject.toml`, `Cargo.toml`,
-      `go.mod`, Gradle, `.csproj`), the CI config, and the top-level layout.
-    - Note the language(s), package manager, and the test, lint, and schema tools already in use.
+    - Read the manifests and workspace configs (`package.json`, `pnpm-workspace.yaml`, Gradle,
+      `module-info.java`), the CI config, and the top-level layout.
+    - Note the language(s), package manager, and the test, lint, validation, and contract tools
+      already in use, and any HTTP or gRPC interface the project serves or calls.
     - An empty repo is a greenfield project: the language is still to be decided.
 2. **Interview the human, briefly.** This skill runs first, before the human has explored the
    problem. Ask only for what the human can know today, and accept rough answers. The modules,
    boundaries, and business rules are not an input: they are discovered later, in `/vibe` sessions.
     - What the project is for, and for whom (`PROJECT_PURPOSE`). Scope and non-goals only as far as
       they are known; a rough or partial statement is fine.
-    - Language and runtime, if not decided. Existing conventions the human wants to keep.
+    - Language and runtime, if not decided: TypeScript or Java (Kotlin allowed). Any other
+      language uses the fallback section of the stack map, with every gap recorded as a deviation.
+      Existing conventions the human wants to keep.
     - The deployable unit, defaulting to one binary, service, or CLI. Confirm rather than ask.
     - Any existing `.pi/prompts/` files. Same-named ones are replaced; ask whether others stay.
     - Modules, boundaries, live services, or business rules, **only if the human volunteers them**
       or the repo already contains them. Record those as seeds. Do not ask for the full list, do not
       press for completeness, and do not design modules for them.
     - Push back only on what conflicts with the rules today (microservices, mocks in the core,
-      code-first schemas). Either the human drops it, or it becomes a recorded deviation.
+      hand-written JSON Schema for internal data, code-first OpenAPI). Either the human drops it,
+      or it becomes a recorded deviation.
     - Never fill a gap with a guess or a `TODO`. An unknown that belongs to later discovery is
       written as "none yet" (see Placeholders), not invented.
 3. **Map the stack.** Read the language's section in
@@ -71,11 +75,12 @@ goes under `## Project deviations` in `AGENTS.md`, with its reason.
    Replace every `{{PLACEHOLDER}}` in all five files (see the table below). Leave the living
    sections empty when nothing is known yet.
 5. **Wire enforcement.** Every command and check named in the file must exist and run.
-    - List what is missing: dependencies, configs, task scripts, the schema module skeleton, and
-      the `.gitignore` entry for generated types.
+    - List what is missing: dependencies, configs, task scripts, the validation module skeleton
+      (`VALIDATION_MODULE`), the validator setup (the typia transform for TypeScript), a `CMD_GEN`
+      that is a no-op until contracts exist, and the `.gitignore` entry for generated code.
     - Get the human's approval, then add only that tooling.
     - On a greenfield repo the commands must pass on the empty project, with no modules yet. Create
-      only the shared schema module skeleton and tooling configs, never a placeholder feature module.
+      only the shared validation module skeleton and tooling configs, never a placeholder feature module.
 6. **Validate**, and repeat until there are no errors:
 
    ```bash
@@ -131,15 +136,18 @@ goes under `## Project deviations` in `AGENTS.md`, with its reason.
 - Do not design the architecture here. An empty Modules table is correct on day one; a table
   invented from guesses is a defect, because later steps treat it as the specification's record.
 - This skill acts as planner, not tester or implementer. Write tooling configs only. Write no
-  features, steps, property tests, schemas for real data, or implementation code.
-- JSON Schema draft 2020-12 is fixed even where the type generator supports less. Keep schemas inside
-  the generator's subset and record that as a deviation. Never switch to generating schemas from code.
+  features, steps, property tests, boundary types or contracts for real data, or implementation code.
+- Internal boundaries are native types with declared constraints, never JSON Schema files. Where a
+  library needs a JSON Schema (model tool definitions), it is derived from the native type.
+- HTTP and gRPC are contract-first: the OpenAPI document or `.proto` is the source and code is
+  generated from it. Never switch to generating the contract from code. A project with no HTTP or
+  gRPC interface still gets Rule 3; it applies once `/vibe` adds one.
 - Multi-language repo: use one root `AGENTS.md` whose Stack and commands section covers each stack.
   Add a nested `AGENTS.md` only for a subtree with its own toolchain, containing only that subtree's
   Stack and commands.
 - If the human also uses Claude Code, add a `CLAUDE.md` containing the single line `@AGENTS.md`,
   so there is one source.
-- The rules make `AGENTS.md` about 260 lines. Keep the project sections tight. The check script warns
+- The rules make `AGENTS.md` about 280 lines. Keep the project sections tight. The check script warns
   above 400 lines.
 - A rule that tooling cannot enforce in this stack is still a rule. Record the gap under Project
   deviations, and fill its Enforcement cell with "review only".
