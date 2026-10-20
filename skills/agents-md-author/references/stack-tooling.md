@@ -32,10 +32,7 @@ Contents
   `{{GENERATED_DIR}}`, and is a no-op while no contracts exist, so it can be wired on day one.
 - Protobuf uses Buf for every language: `buf generate`, `buf lint`, `buf breaking`, with
   protovalidate (`buf.validate` field options) for constraints that proto3 cannot express.
-- `{{CMD_TEST}}` runs the features (excluding `@live`), then the property tests. `{{CMD_COVERAGE}}`
-  runs the same suite under the coverage tool.
-- Mutation testing runs only in the CI pipeline, never in the agent workflow: it is too slow for
-  an iteration. Wire `MUTATION_TOOL` into the CI config, not into a local command.
+- `{{CMD_TEST}}` runs the features (excluding `@live`), then the property tests.
 - `{{CMD_CHECK}}` runs codegen first, then type check, lint, format check, contract lint, and the
   boundary checks.
 - Decision-table completeness needs a check: use the compiler where it can check exhaustiveness,
@@ -58,9 +55,7 @@ Contents
 - GENERATOR_LOCATION: `src/<workspace>.arbitraries.ts`
 - PBT_REGRESSION: an `examples` entry in `fc.assert`
 - PBT_REPLAY: `fc.assert(property, { seed, path })`
-- COVERAGE_TOOL: c8 around the features and property tests (branch and line; needs source maps from the
-  `tsc` output)
-- MUTATION_TOOL (CI only): StrykerJS. Use the `command` test runner to run the same test command, because node:test
+- MUTATION_TOOL: StrykerJS. Use the `command` test runner to run the same test command, because node:test
   has no dedicated runner. Cucumber steps can use `@stryker-mutator/cucumber-runner`.
 - VALIDATOR: typia, applied by its compile-time transform
 - CONSTRAINT_MECHANISM: typia type tags intersected into the type (`tags.MinLength<1>`,
@@ -82,7 +77,7 @@ Contents
 - GENERATED_DIR: `**/src/generated/`
 - UNCHECKED_CAST_EXAMPLES: `as`, non-null `!`, `any`, hand-written guards such as `isRecord`,
   `JSON.parse` output used directly, `typia.assert` or `typia.is` called outside `@repo/boundary`
-- Typical commands: `pnpm check`, `pnpm test`, `pnpm test:live`, `pnpm gen`, `pnpm coverage`; CI runs `pnpm mutation`
+- Typical commands: `pnpm check`, `pnpm test`, `pnpm test:live`, `pnpm gen`, `pnpm mutation`
 - Gotchas:
     - typia only works through its transform. Install it with `npx typia setup` (ts-patch), and run
       features, properties, and Stryker on transformed output (`tsc`, or a bundler with
@@ -110,8 +105,7 @@ Contents
 - GENERATOR_LOCATION: `<Module>Arbitraries.java` in the same test package
 - PBT_REGRESSION: an `@Example` method reproducing the shrunk counterexample
 - PBT_REPLAY: `@Property(seed = "...")`
-- COVERAGE_TOOL: JaCoCo (`jacocoTestReport`, branch and line)
-- MUTATION_TOOL (CI only): PIT via the `info.solidsoft.pitest` Gradle plugin with `pitest-junit5-plugin`
+- MUTATION_TOOL: PIT via the `info.solidsoft.pitest` Gradle plugin with `pitest-junit5-plugin`
 - VALIDATOR: Jakarta Bean Validation (Hibernate Validator)
 - CONSTRAINT_MECHANISM: Jakarta constraint annotations on record components (`@NotNull`, `@NotBlank`,
   `@Size`, `@Pattern`, `@Email`, `@Min`/`@Max`, `@Valid` to cascade into nested records), including
@@ -137,7 +131,7 @@ Contents
   `${validatedValue}` in a constraint message
 - Typical commands: `./gradlew check`, `./gradlew test`, `./gradlew liveTest`,
   `./gradlew generateContracts` (an aggregate of `openApiGenerate` and `buf generate`),
-  `./gradlew test jacocoTestReport`; CI runs `./gradlew pitest`
+  `./gradlew pitest`
 - Gotchas:
     - Cascading is opt-in: a nested record or collection element is validated only when the
       component carries `@Valid`. Add an ArchUnit rule that every component whose type is a
@@ -157,8 +151,8 @@ Fill each placeholder by finding, in order of preference:
 1. A Cucumber-family Gherkin runner. If none exists, use Given/When/Then-structured tests in the
    native runner, keeping `features/` as the spec, and record it under Project deviations.
 2. A property-based testing library with shrinking.
-3. A coverage tool that reports branches and lines, and a mutation testing tool for CI. If either
-   is missing, say so under Project deviations.
+3. A mutation testing tool. If none exists, say so under Project deviations, and have the
+   reviewer hand-mutate core logic instead.
 4. A runtime validator driven by the language's own type declarations, with constraints declared
    on the type and errors that can be stripped of the failing value. Plus an OpenAPI generator and
    a Buf plugin for that language.

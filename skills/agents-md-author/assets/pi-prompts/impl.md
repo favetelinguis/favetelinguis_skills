@@ -17,7 +17,7 @@ Work autonomously. Do not ask me questions unless the specification blocks you (
   - the public surface ({{PUBLIC_API_MECHANISM}}) unchanged.
 - If you uncover a boundary the plan did not cover, add its boundary type (or contract) in the same change and call it out in your report.
 - Features cannot enumerate every permutation, so you cover the rest with property tests ({{PBT_TOOL}}). Add one only where the code has a real invariant and the property is idiomatic: round trips, idempotence, invariants, decision-table completeness, or a stateful module against a model. Put them at {{PROPERTY_TEST_LOCATION}}, with generators in {{GENERATOR_LOCATION}}. Never write example-based unit tests.
-- Run `{{CMD_COVERAGE}}`. Cover an uncovered branch in core logic or at a boundary with a property where one is idiomatic. If only a new scenario would cover it, report it; do not add scenarios.
+- Run `{{CMD_MUTATION}}` on the changed modules. Kill a surviving mutant in core logic or at a boundary by strengthening a property. If only a new scenario would kill it, report it; do not add scenarios.
 - Do not add scenarios, documentation, or public declarations. Do not commit.
 
 Before finishing, confirm each item:
@@ -33,11 +33,9 @@ Before finishing, confirm each item:
 
 Your report is short and contains only:
 
-1. Properties:
-   - the property tests you added, one line each: the property in plain words, and the invariant it protects or the permutations the features cannot cover (or "none added");
-   - branch and line coverage of the changed modules from `{{CMD_COVERAGE}}`;
-   - uncovered branches you could not cover without a new scenario, with file and line.
-2. Any boundary type or contract you added that the plan did not cover.
-3. Anything you could not run, such as `{{CMD_TEST_LIVE}}`, instead of claiming it passed.
+1. The property tests you added, one line each: the property in plain words, and the invariant it protects or the permutations the features cannot cover. If you added none, say "Done."
+2. Mutants you could not kill without a new scenario, with file and line.
+3. Any boundary type or contract you added that the plan did not cover.
+4. Anything you could not run, such as `{{CMD_TEST_LIVE}}`, instead of claiming it passed.
 
 Do not summarize the implementation or the test results. Omit any item with nothing to say.
