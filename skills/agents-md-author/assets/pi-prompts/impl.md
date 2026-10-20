@@ -11,18 +11,18 @@ Work autonomously. Do not ask me questions unless the specification blocks you (
 - Write the step definitions in `steps/`: a small World that hides setup, and a few reusable high-level steps that drive the public interface only.
 - Run the features and see them fail for the right reason before writing the implementation.
 - Write the implementation in `src/`, following the project rules:
-  - pure core and imperative shell; domain states as ADTs with exhaustive matching; branching rules as decision tables;
+  - pure core in the module's `{{CORE_DIR}}`, imperative shell outside it; domain states as ADTs with exhaustive matching; branching rules as decision tables;
   - boundary data validated through `{{VALIDATION_MODULE}}` as the first thing each public function does, with no unchecked casts ({{UNCHECKED_CAST_EXAMPLES}});
   - HTTP and gRPC handlers and clients built on the code generated from their contracts, converting wire types to native types once, in the adapter;
   - the public surface ({{PUBLIC_API_MECHANISM}}) unchanged.
 - If you uncover a boundary the plan did not cover, add its boundary type (or contract) in the same change and call it out in your report.
 - Features cannot enumerate every permutation, so you cover the rest with property tests ({{PBT_TOOL}}). Add one only where the code has a real invariant and the property is idiomatic: round trips, idempotence, invariants, decision-table completeness, or a stateful module against a model. Put them at {{PROPERTY_TEST_LOCATION}}, with generators in {{GENERATOR_LOCATION}}. Never write example-based unit tests.
-- Run `{{CMD_MUTATION}}` on the changed modules. Kill a surviving mutant in core logic or at a boundary by strengthening a property. If only a new scenario would kill it, report it; do not add scenarios.
+- Run `{{CMD_MUTATION}}` on the changed modules (it mutates only the core and runs only property tests). Kill a surviving mutant by strengthening a property. If only a new scenario would kill it, report it; do not add scenarios.
 - Do not add scenarios, documentation, or public declarations. Do not commit.
 
 Before finishing, confirm each item:
 
-- [ ] The core has no storage, file, network, clock, or randomness access, and the shell has no business rules.
+- [ ] Each module's core lives in its `{{CORE_DIR}}` and has no storage, file, network, clock, or randomness access; the shell has no business rules.
 - [ ] Matching over domain ADTs is exhaustive, with no catch-all branch; every decision table is complete and unambiguous.
 - [ ] Each module is deep: a simple interface over rich hidden behavior, internals changeable without breaking callers, no pass-through functions.
 - [ ] Errors are defined away, masked, or aggregated, not pushed to callers; error messages never contain the failed data.

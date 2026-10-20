@@ -33,6 +33,11 @@ Contents
 - Protobuf uses Buf for every language: `buf generate`, `buf lint`, `buf breaking`, with
   protovalidate (`buf.validate` field options) for constraints that proto3 cannot express.
 - `{{CMD_TEST}}` runs the features (excluding `@live`), then the property tests.
+- `CORE_DIR` is relative to the module root, so every module has its own core. One mutation config
+  matches all of them with a glob; `{{CMD_MUTATION}}` mutates only these directories (excluding
+  property tests and generators), runs only the property tests, and accepts module paths to scope
+  a run to the changed modules. It never runs features or mutates shell code: features are far too
+  slow to run per mutant. Use the tool's incremental mode so unchanged mutants are not re-run.
 - `{{CMD_CHECK}}` runs codegen first, then type check, lint, format check, contract lint, and the
   boundary checks.
 - Decision-table completeness needs a check: use the compiler where it can check exhaustiveness,
@@ -55,8 +60,11 @@ Contents
 - GENERATOR_LOCATION: `src/<workspace>.arbitraries.ts`
 - PBT_REGRESSION: an `examples` entry in `fc.assert`
 - PBT_REPLAY: `fc.assert(property, { seed, path })`
-- MUTATION_TOOL: StrykerJS. Use the `command` test runner to run the same test command, because node:test
-  has no dedicated runner. Cucumber steps can use `@stryker-mutator/cucumber-runner`.
+- CORE_DIR: `src/core/`
+- MUTATION_TOOL: StrykerJS with `mutate: ["libs/*/src/core/**/*.ts", "apps/*/src/core/**/*.ts",
+  "!**/*.property.ts", "!**/*.arbitraries.ts"]`, `--incremental`, and the `command` test runner
+  (node:test has no dedicated runner) running only the property tests (`node --test` on the
+  compiled `*.property.js`), never cucumber-js. Scope a run with `--mutate "libs/<module>/src/core/**/*.ts"`.
 - VALIDATOR: typia, applied by its compile-time transform
 - CONSTRAINT_MECHANISM: typia type tags intersected into the type (`tags.MinLength<1>`,
   `tags.Format<"email">`, `tags.Pattern<"...">`, `tags.Minimum<0>`, `tags.Type<"uint32">`)
@@ -105,7 +113,11 @@ Contents
 - GENERATOR_LOCATION: `<Module>Arbitraries.java` in the same test package
 - PBT_REGRESSION: an `@Example` method reproducing the shrunk counterexample
 - PBT_REPLAY: `@Property(seed = "...")`
-- MUTATION_TOOL: PIT via the `info.solidsoft.pitest` Gradle plugin with `pitest-junit5-plugin`
+- CORE_DIR: `src/main/java/<module package>/core/` (the module's `core` subpackage)
+- MUTATION_TOOL: PIT via the `info.solidsoft.pitest` Gradle plugin with `pitest-junit5-plugin`,
+  `targetClasses = ['<base>.*.core.*']`, `targetTests = ['*Properties']` (so Cucumber runners are
+  excluded), and `enableDefaultIncrementalAnalysis = true`. Apply it to every module subproject, so
+  `./gradlew :libs:<module>:pitest` scopes a run to one module
 - VALIDATOR: Jakarta Bean Validation (Hibernate Validator)
 - CONSTRAINT_MECHANISM: Jakarta constraint annotations on record components (`@NotNull`, `@NotBlank`,
   `@Size`, `@Pattern`, `@Email`, `@Min`/`@Max`, `@Valid` to cascade into nested records), including
@@ -151,8 +163,8 @@ Fill each placeholder by finding, in order of preference:
 1. A Cucumber-family Gherkin runner. If none exists, use Given/When/Then-structured tests in the
    native runner, keeping `features/` as the spec, and record it under Project deviations.
 2. A property-based testing library with shrinking.
-3. A mutation testing tool. If none exists, say so under Project deviations, and have the
-   reviewer hand-mutate core logic instead.
+3. A mutation testing tool that can be limited to the core's files and the property tests. If none
+   exists, say so under Project deviations, and have the reviewer hand-mutate core logic instead.
 4. A runtime validator driven by the language's own type declarations, with constraints declared
    on the type and errors that can be stripped of the failing value. Plus an OpenAPI generator and
    a Buf plugin for that language.

@@ -67,6 +67,7 @@ Every module strictly separates computation from I/O:
   - It takes immutable data as input and returns explicit result types or domain events.
 - **Imperative shell (infrastructure and coordination).** This is a thin execution layer. It gathers state from external sources, feeds it to the core, and executes the side effects the core's result calls for.
   - The shell only orchestrates. Business rules and domain branching never live in it.
+- **Separate them physically.** Every module has its own core in `{{CORE_DIR}}`, relative to the module root. It never imports the shell or another module's core; everything else in the module is shell. Mutation testing targets exactly these directories, so core logic placed outside them goes unaudited.
 
 ## Modelling the pure core: ADTs and decision tables
 
@@ -155,7 +156,7 @@ Testing responsibilities follow the architecture:
 | System | Modular monolith | Features (BDD) at module boundaries |
 | Module | Deep modules | Features (BDD) on the public interface |
 | Domain | Pure core, imperative shell | Property-based tests |
-| Test suite | Assertion strength | Mutation testing |
+| Test suite | Assertion strength of the property tests | Mutation testing of the pure core |
 
 - Behavior is specified by features before it is implemented. A feature must fail for the right reason before the code that satisfies it exists, then pass.
 - Features are black-box Given/When/Then scenarios against the public interface. They test what the module accomplishes from the caller's view, not how it works. They never mock or assert on internals, so refactoring the core or the shell wiring never breaks them while behavior is unchanged.
@@ -190,8 +191,9 @@ Testing responsibilities follow the architecture:
   - Runs use a random seed, so a failure can appear on any run. Replay a failure from its reported seed ({{PBT_REPLAY}}).
   - Tests stay offline and deterministic in behavior: local servers, in-memory databases, temporary directories, no live credentials. Clean up every handle a property opens, because it runs many times.
 - **Mutation testing audits the suite.** Line coverage is not evidence; killed mutants are.
-  - Run `{{CMD_MUTATION}}` ({{MUTATION_TOOL}}) on changed modules. Tests must detect injected mutants: flipped logic, altered return values, missing conditions.
-  - A surviving mutant in core logic or at a module boundary is a finding. Strengthen a property, or report a missing scenario to the human (the implementer does not add features).
+  - Scope: mutate only each module's `{{CORE_DIR}}` and run only the property tests. Never mutate the shell, steps, generators, or generated code, and never run features in a mutation run; they are too slow per mutant, and the shell has no invariants to audit.
+  - Run `{{CMD_MUTATION}}` ({{MUTATION_TOOL}}) on changed modules. Property tests must detect injected mutants: flipped logic, altered return values, missing conditions.
+  - A surviving mutant is a finding. Strengthen a property, or report a missing scenario to the human (the implementer does not add features).
   - An equivalent mutant is ignored only with a stated reason.
 - A passing feature proves only what it checks. Do not claim more coverage than the scenarios verify.
 
@@ -259,7 +261,7 @@ Data crossing a boundary is described by {{LANGUAGE}} types. Shape is the type i
 | `{{CMD_TEST}}` | All features, then all property tests; offline, excludes `@live` |
 | `{{CMD_TEST_LIVE}}` | `@live` scenarios against real services (needs credentials) |
 | `{{CMD_GEN}}` | Generate code from OpenAPI and protobuf contracts |
-| `{{CMD_MUTATION}}` | Mutation testing |
+| `{{CMD_MUTATION}}` | Mutation testing: mutates only the pure core, runs only property tests |
 
 ## Enforcement
 
@@ -273,4 +275,4 @@ Mechanical checks back the rules above. When a check fails, fix the code. Never 
 | Boundary types and validation | {{VALIDATOR}}, via `{{CMD_CHECK}}` |
 | Wire contracts | {{CONTRACT_CHECKS}}, via `{{CMD_CHECK}}` |
 | Behavior and invariants | {{BDD_TOOL}} and {{PBT_TOOL}}, via `{{CMD_TEST}}` |
-| Test strength | {{MUTATION_TOOL}}, via `{{CMD_MUTATION}}` |
+| Test strength of the pure core | {{MUTATION_TOOL}}, via `{{CMD_MUTATION}}` |
