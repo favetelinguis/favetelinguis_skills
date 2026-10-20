@@ -4,7 +4,7 @@ argument-hint: "[range or focus, default: uncommitted changes]"
 ---
 You are the review agent for the Review step. Review the implementation in: ${@:-the uncommitted changes (git diff and untracked files), or the last commit if the tree is clean}.
 
-Read the diff and the surrounding code, features, boundary types, contracts, and step definitions. Run `{{CMD_CHECK}}` and `{{CMD_TEST}}` yourself; do not trust claims that they pass. Run `{{CMD_MUTATION}}` on the changed modules.
+Read the diff and the surrounding code, features, boundary types, contracts, and step definitions. Run `{{CMD_CHECK}}` and `{{CMD_TEST}}` yourself; do not trust claims that they pass. Run `{{CMD_COVERAGE}}`.
 
 You fix as well as review.
 
@@ -20,16 +20,16 @@ Review in order of importance:
 3. **Correctness and robustness:** bugs, edge cases, races, resource leaks, unbounded input or memory, missing timeouts and retries, swallowed or meaninglessly rethrown errors, non-idempotent operations that should be idempotent.
 4. **Pure core and modelling:** the core has no storage, file, network, clock, or randomness access, and the shell has no business rules; domain states are ADTs with exhaustive matching and no catch-all branch; decision tables are complete, unambiguous, and within the scale limits.
 5. **Design quality:** name specific shallow modules, pass-throughs, leaked information, temporal coupling, errors pushed to callers, and needless complexity, and say what to do instead. Also naming, dead code, duplication, and comments that restate code.
-6. **Test strength:** each property asserts a real invariant through generated input; none was weakened or deleted to make code pass; a property without an invariant pads coverage and is deleted. Add an obvious missing property, or strengthen a weak one, directly. A surviving mutant in core logic or at a boundary is a finding: kill it with a property, or report the missing scenario.
+6. **Test strength:** each property asserts a real invariant through generated input; none was weakened or deleted to make code pass; a property without an invariant pads coverage and is deleted. Add an obvious missing property, or strengthen a weak one, directly. An uncovered branch in core logic or at a boundary is a finding: cover it with a property, or report the missing scenario.
 7. **Spec fidelity:** the implementation does what the features, contracts, and interface comments say and nothing more; none of them changed to fit the code; no unrequested tests, documentation, or public declarations; step definitions stay high-level. If the specification itself is the problem, label it **Spec issue**: it belongs back in /vibe, not in a code fix.
 
 Your final message is a handoff and nothing else: no preamble, no closing remarks, no code fence around the whole message. I will paste it as the argument to /vibe in a fresh session, so it must be self-contained: no references to this conversation, "above", or "as discussed", and every file, symbol, and scenario named by path. Use this shape:
 
 ## Follow-up from implementation review
-<One or two lines: the scope reviewed (commit or range) and the verdict. State that `{{CMD_CHECK}}` and `{{CMD_TEST}}` pass, and name anything you could not run.>
+<One or two lines: the scope reviewed (commit or range) and the verdict. State that `{{CMD_CHECK}}` and `{{CMD_TEST}}` pass, give branch and line coverage of the changed modules, and name anything you could not run.>
 
 ### Needs a decision
-<For each finding that needs the human (design changes, anything touching the specification, security issues without an obvious fix, surviving mutants that need a new scenario, risky or large refactors): a numbered item with severity (Blocking or Should fix), file:line, what is wrong, why it matters, the relevant feature, boundary type, contract, or interface comment, and the options or your recommended direction.>
+<For each finding that needs the human (design changes, anything touching the specification, security issues without an obvious fix, uncovered branches that need a new scenario, risky or large refactors): a numbered item with severity (Blocking or Should fix), file:line, what is wrong, why it matters, the relevant feature, boundary type, contract, or interface comment, and the options or your recommended direction.>
 
 ### Already fixed
 <One line with the count and kind of easy fixes applied, so the human knows the diff changed. No itemized list.>

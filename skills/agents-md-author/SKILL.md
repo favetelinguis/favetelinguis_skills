@@ -4,7 +4,7 @@ description: >-
   Writes or refreshes a project's AGENTS.md from a fixed engineering philosophy:
   modular monolith, Ousterhout deep modules, a pure core of algebraic data types
   and decision tables behind an imperative shell, BDD features first,
-  property-based and mutation testing, native-type validation at internal
+  property tests, mutation testing in CI, native-type validation at internal
   boundaries (typia, Jakarta Bean Validation), contract-first OpenAPI and
   protobuf for HTTP and gRPC, and a plan-implement-review workflow. Interviews
   the human about the project's purpose and its TypeScript or Java stack, maps
@@ -77,7 +77,8 @@ goes under `## Project deviations` in `AGENTS.md`, with its reason.
 5. **Wire enforcement.** Every command and check named in the file must exist and run.
     - List what is missing: dependencies, configs, task scripts, the validation module skeleton
       (`VALIDATION_MODULE`), the validator setup (the typia transform for TypeScript), a `CMD_GEN`
-      that is a no-op until contracts exist, and the `.gitignore` entry for generated code.
+      that is a no-op until contracts exist, `CMD_COVERAGE`, the mutation testing job in the CI
+      config, and the `.gitignore` entry for generated code.
     - Get the human's approval, then add only that tooling.
     - On a greenfield repo the commands must pass on the empty project, with no modules yet. Create
       only the shared validation module skeleton and tooling configs, never a placeholder feature module.
