@@ -15,7 +15,7 @@ Report briefly, skipping any section with nothing to say:
    - interface comments that restate code or hide what a caller must know;
    - a widened public surface ({{PUBLIC_API_MECHANISM}});
    - domain states as flags or optional fields instead of ADTs, or a decision table that is incomplete, ambiguous, or past the scale limits.
-3. **Design pitfalls:** shallow modules, pass-throughs, leaked decisions, temporal coupling, errors pushed to callers, business rules that would land in the shell, or an interface that is hard to describe simply. Suggest the simpler shape.
+3. **Design pitfalls:** module structure that breaks the Module structure rules (a premature split with no signal, a module per entity or layer, a shared types or helpers module, a module that has outgrown one responsibility, a dependency that points the wrong way or closes a cycle, domain logic in `apps/`); shallow modules, pass-throughs, leaked decisions, temporal coupling, errors pushed to callers, business rules that would land in the shell, or an interface that is hard to describe simply. Suggest the simpler shape.
 4. **Gaps and risks:** Modules, External boundaries, or Live services in `AGENTS.md` that no longer match the specification; unspecified error behavior at the boundary, unhandled edge cases, contradictions between features, contracts, and interface comments, and things that will be hard to implement, test with properties, or change later.
 5. **Next:** the 2 to 4 most valuable things to resolve before this is ready for /impl, as concrete questions or edits. Ask the ones that need my decision with the `ask_user_question` tool when it is available.
 

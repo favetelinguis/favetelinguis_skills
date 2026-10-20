@@ -18,7 +18,8 @@ Work autonomously. Do not ask me questions unless the specification blocks you (
 - If you uncover a boundary the plan did not cover, add its boundary type (or contract) in the same change and call it out in your report.
 - Features cannot enumerate every permutation, so you cover the rest with property tests ({{PBT_TOOL}}). Add one only where the code has a real invariant and the property is idiomatic: round trips, idempotence, invariants, decision-table completeness, or a stateful module against a model. Put them at {{PROPERTY_TEST_LOCATION}}, with generators in {{GENERATOR_LOCATION}}. Never write example-based unit tests.
 - Run `{{CMD_MUTATION}}` on the changed modules (it mutates only the core and runs only property tests). Kill a surviving mutant by strengthening a property. If only a new scenario would kill it, report it; do not add scenarios.
-- Do not add scenarios, documentation, or public declarations. Do not commit.
+- Do not add scenarios, documentation, or public declarations. Do not create, split, or merge modules, and do not add a dependency between modules that the `Depends on` column does not list. If the code does not fit its module, stop and hand it back to me as a structure question.
+- Do not commit.
 
 Before finishing, confirm each item:
 
@@ -28,6 +29,7 @@ Before finishing, confirm each item:
 - [ ] Errors are defined away, masked, or aggregated, not pushed to callers; error messages never contain the failed data.
 - [ ] Every boundary is validated at entry against its boundary type or contract.
 - [ ] Step definitions never reach into internals.
+- [ ] Module manifests declare exactly the dependencies in the `Depends on` column; no domain logic lives in `apps/`.
 - [ ] Each property asserts an invariant over generated input, not a single example.
 - [ ] `{{CMD_CHECK}}` and `{{CMD_TEST}}` pass.
 

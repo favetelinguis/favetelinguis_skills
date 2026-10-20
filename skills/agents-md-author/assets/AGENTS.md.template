@@ -8,12 +8,12 @@
 
 ## Modules
 
-A module is one {{MODULE_UNIT}} under `libs/` (or an app under `apps/`). Every module is a boundary (see Data validation rules).
+A module is one {{MODULE_UNIT}} under `libs/` (or an app under `apps/`). Every module is a boundary (see Data validation rules). When to create, split, or merge one is governed by Module structure (see Architecture).
 
-This table is a living record, not a plan. List only modules that the specification (features, contracts, interface comments) already contains, and keep each row in step with it. The Plan step adds, revises, merges, or removes rows as the design is discovered. Never invent a module to fill the table.
+This table is a living record, not a plan. List only modules that the specification (features, contracts, interface comments) already contains, and keep each row in step with it. The Plan step adds, revises, splits, merges, or removes rows as the design is discovered. Never invent a module to fill the table.
 
-| Module | Owns (responsibility and the decisions it hides) | Public interface |
-| --- | --- | --- |
+| Module | Owns (responsibility and the decisions it hides) | Depends on | Public interface |
+| --- | --- | --- | --- |
 {{MODULE_ROWS}}
 
 ## External boundaries
@@ -45,6 +45,23 @@ These are agreed exceptions to the rules below, each with its reason. Everything
 - **Strict module encapsulation.** Modules communicate only through their explicit public interface ({{PUBLIC_API_MECHANISM}}). Never access another module's storage, tables, internal domain types, or private files. This is enforced by {{BOUNDARY_ENFORCEMENT}}.
 - **Low cognitive load.** A developer can fully understand and change one module without holding the entire system in their head.
 
+## Module structure
+
+Each module is a separate {{MODULE_UNIT}} with its own manifest and its own declared dependencies. A module boundary is never just a folder or package inside another build module. Decide placement deliberately: do not put everything in one module because it is convenient, and do not split before the design asks for it.
+
+- **Default to few, deep modules.** New code goes into an existing module when it shares that module's responsibility and the decisions it hides. Grow a module before splitting it.
+- **Split only on a signal.** Create a module only when at least one of these split signals applies, and name it when you propose the module:
+  - a distinct responsibility with its own vocabulary and its own hidden decisions;
+  - a different reason or rate of change, or a different owner;
+  - a dependency (library, I/O, external system) that the rest of the system should not see;
+  - the module fails the low-cognitive-load test: it can no longer be understood and changed on its own.
+- **Do not split prematurely.** No module per entity, per layer (controllers, services, repositories), or per technical kind ("utils", "common", "types", "models"). Every module boundary costs boundary types and validation (Rule 2), so a split that adds that cost without hiding a decision makes the system more complex, not less.
+- **Merge on a signal.** Merge modules that always change together, that mostly pass data through to each other, or whose interfaces mirror each other.
+- **Dependencies are explicit, acyclic, and point one way.** Each module declares in its manifest every module it uses, and nothing more. Dependencies point from policy to mechanism and from `apps/` to `libs/`, never the reverse. This is enforced by {{MODULE_GRAPH_ENFORCEMENT}}.
+- **`apps/` hold only wiring and the outermost shell:** entry points, configuration, and composition of `libs/` modules. Domain logic never lives in an app.
+- **`{{VALIDATION_MODULE}}` is the one shared module.** It is mechanism every module depends on, never a home for shared domain types or helpers.
+- **Structure changes are Plan-step decisions.** Creating, splitting, or merging a module, or adding a dependency between modules, is decided in the Plan step with the human and recorded in the Modules table.
+
 ## Pure core, imperative shell
 
 Every module strictly separates computation from I/O:
@@ -67,7 +84,7 @@ Every module strictly separates computation from I/O:
   - It takes immutable data as input and returns explicit result types or domain events.
 - **Imperative shell (infrastructure and coordination).** This is a thin execution layer. It gathers state from external sources, feeds it to the core, and executes the side effects the core's result calls for.
   - The shell only orchestrates. Business rules and domain branching never live in it.
-- **Separate them physically.** Every module has its own core in `{{CORE_DIR}}`, relative to the module root. It never imports the shell or another module's core; everything else in the module is shell. Mutation testing targets exactly these directories, so core logic placed outside them goes unaudited.
+- **Separate them physically.** Every module in `libs/` has its own core in `{{CORE_DIR}}`, relative to the module root. It never imports the shell or another module's core; everything else in the module is shell. Mutation testing targets exactly these directories, so core logic placed outside them goes unaudited.
 
 ## Modelling the pure core: ADTs and decision tables
 
@@ -270,6 +287,8 @@ Mechanical checks back the rules above. When a check fails, fix the code. Never 
 | Rule | Enforced by |
 | --- | --- |
 | Module encapsulation | {{BOUNDARY_ENFORCEMENT}} |
+| Module dependency graph (declared, acyclic, `apps/` to `libs/` only) | {{MODULE_GRAPH_ENFORCEMENT}} |
+| Module granularity (split and merge signals) | judgement, checked in the Plan and Review steps |
 | Exhaustive handling of domain ADTs | {{ADT_ENFORCEMENT}} |
 | Interface comments on public declarations | {{INTERFACE_COMMENT_ENFORCEMENT}} |
 | Boundary types and validation | {{VALIDATOR}}, via `{{CMD_CHECK}}` |

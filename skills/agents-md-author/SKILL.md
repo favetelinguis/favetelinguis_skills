@@ -2,7 +2,8 @@
 name: agents-md-author
 description: >-
   Writes or refreshes a project's AGENTS.md from a fixed engineering philosophy:
-  modular monolith, Ousterhout deep modules, a pure core of algebraic data types
+  modular monolith of pnpm workspace or Maven modules, Ousterhout deep modules,
+  a pure core of algebraic data types
   and decision tables behind an imperative shell, BDD features first,
   property-based and mutation testing, native-type validation at internal
   boundaries (typia, Jakarta Bean Validation), contract-first OpenAPI and
@@ -10,8 +11,7 @@ description: >-
   the human about the project's purpose and its TypeScript or Java stack, maps
   every rule onto that tooling, wires the enforcing commands, and installs
   project-local pi prompt templates (/vibe, /vibe-review, /impl, /impl-review).
-  Works from a rough idea; modules are discovered later through /vibe. Use when
-  starting a new project or repo, or when creating, regenerating, updating, or
+  Works from a rough idea. Use when starting a new project or repo, or when creating, regenerating, updating, or
   auditing AGENTS.md or CLAUDE.md, agent instructions, coding guidelines,
   architecture rules, or the workflow prompt templates for a codebase.
   Not for skills, READMEs, or other documentation.
@@ -43,8 +43,8 @@ goes under `## Project deviations` in `AGENTS.md`, with its reason.
 
 1. **Inspect the project.**
     - Read any existing `AGENTS.md`, `CLAUDE.md`, and README.
-    - Read the manifests and workspace configs (`package.json`, `pnpm-workspace.yaml`, Gradle,
-      `module-info.java`), the CI config, and the top-level layout.
+    - Read the manifests and workspace configs (`package.json`, `pnpm-workspace.yaml`, the
+      Maven `pom.xml` files, `module-info.java`), the CI config, and the top-level layout.
     - Note the language(s), package manager, and the test, lint, validation, and contract tools
       already in use, and any HTTP or gRPC interface the project serves or calls.
     - An empty repo is a greenfield project: the language is still to be decided.
@@ -53,8 +53,9 @@ goes under `## Project deviations` in `AGENTS.md`, with its reason.
    boundaries, and business rules are not an input: they are discovered later, in `/vibe` sessions.
     - What the project is for, and for whom (`PROJECT_PURPOSE`). Scope and non-goals only as far as
       they are known; a rough or partial statement is fine.
-    - Language and runtime, if not decided: TypeScript or Java (Kotlin allowed). Any other
-      language uses the fallback section of the stack map, with every gap recorded as a deviation.
+    - Language and runtime, if not decided: TypeScript with pnpm workspaces, or Java with a Maven
+      multi-module build (Kotlin allowed). Any other language uses the fallback section of the
+      stack map, with every gap recorded as a deviation.
       Existing conventions the human wants to keep.
     - The deployable unit, defaulting to one binary, service, or CLI. Confirm rather than ask.
     - Any existing `.pi/prompts/` files. Same-named ones are replaced; ask whether others stay.
@@ -75,12 +76,14 @@ goes under `## Project deviations` in `AGENTS.md`, with its reason.
    Replace every `{{PLACEHOLDER}}` in all five files (see the table below). Leave the living
    sections empty when nothing is known yet.
 5. **Wire enforcement.** Every command and check named in the file must exist and run.
-    - List what is missing: dependencies, configs, task scripts, the validation module skeleton
-      (`VALIDATION_MODULE`), the validator setup (the typia transform for TypeScript), a `CMD_GEN`
+    - List what is missing: dependencies, configs, task scripts, the workspace root (`pnpm-workspace.yaml`
+      globbing `libs/*` and `apps/*`, or the Maven root aggregator `pom.xml`), the validation module
+      skeleton (`VALIDATION_MODULE`), the module-graph checks (`MODULE_GRAPH_ENFORCEMENT`), the validator setup (the typia transform for TypeScript), a `CMD_GEN`
       that is a no-op until contracts exist, and the `.gitignore` entry for generated code.
     - Get the human's approval, then add only that tooling.
     - On a greenfield repo the commands must pass on the empty project, with no modules yet. Create
-      only the shared validation module skeleton and tooling configs, never a placeholder feature module.
+      only the workspace root, the shared validation module skeleton, and tooling configs, never a
+      placeholder feature module. The first real module drops into the workspace during `/vibe`.
 6. **Validate**, and repeat until there are no errors:
 
    ```bash
@@ -102,7 +105,7 @@ goes under `## Project deviations` in `AGENTS.md`, with its reason.
 | Placeholder                                                           | Source                                                                                                                                                                                                                  |
 |-----------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `PROJECT_NAME`, `PROJECT_PURPOSE`, `SCOPE`, `NON_GOALS`, `DEPLOYABLE` | Interview. Keep the purpose to 2-4 sentences. Scope and non-goals may be `Not yet decided.`                                                                                                                                                                           |
-| `MODULE_ROWS`                                                         | Only modules that already exist in the repo or that the human named: one row each, cells one line. Otherwise exactly one row: `\| _none yet_ \| _added by the Plan step_ \| _n/a_ \|`                                      |
+| `MODULE_ROWS`                                                         | Only modules that already exist in the repo or that the human named: one row each, cells one line, `Depends on` listing the modules from its manifest (or `none`). Otherwise exactly one row: `\| _none yet_ \| _added by the Plan step_ \| _n/a_ \| _n/a_ \|`                                      |
 | `EXTERNAL_BOUNDARIES`, `LIVE_SERVICES`                                | Only sources already in the repo or named by the human, as bullets. Otherwise `None yet.` for both                                                                                                                      |
 | `PROJECT_DEVIATIONS`                                                  | Agreed exceptions as `- rule: reason` bullets, or `None.`                                                                                                                                                               |
 | `STACK`, `LANGUAGE`, `LAYOUT_TREE`, `CMD_*`                           | Inspection plus the stack map. `LAYOUT_TREE` shows the real dirs with a one-line role each.                                                                                                                             |
@@ -135,6 +138,9 @@ goes under `## Project deviations` in `AGENTS.md`, with its reason.
   the argument syntax for that harness.
 - Do not design the architecture here. An empty Modules table is correct on day one; a table
   invented from guesses is a defect, because later steps treat it as the specification's record.
+  Module granularity is not decided here either: the Module structure rules in `AGENTS.md` steer it
+  in `/vibe`, one split signal at a time. Existing modules are recorded as they are, even if they
+  look too fine or too coarse; raise that in the hand-off instead of restructuring.
 - This skill acts as planner, not tester or implementer. Write tooling configs only. Write no
   features, steps, property tests, boundary types or contracts for real data, or implementation code.
 - Internal boundaries are native types with declared constraints, never JSON Schema files. Where a
@@ -147,7 +153,7 @@ goes under `## Project deviations` in `AGENTS.md`, with its reason.
   Stack and commands.
 - If the human also uses Claude Code, add a `CLAUDE.md` containing the single line `@AGENTS.md`,
   so there is one source.
-- The rules make `AGENTS.md` about 280 lines. Keep the project sections tight. The check script warns
+- The rules make `AGENTS.md` about 300 lines. Keep the project sections tight. The check script warns
   above 400 lines.
 - A rule that tooling cannot enforce in this stack is still a rule. Record the gap under Project
   deviations, and fill its Enforcement cell with "review only".

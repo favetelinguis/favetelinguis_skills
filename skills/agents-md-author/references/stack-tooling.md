@@ -10,7 +10,7 @@ Contents
 
 - [Shared conventions (all languages)](#shared-conventions-all-languages)
 - [TypeScript / Node](#typescript--node)
-- [JVM: Java 21+ / Kotlin](#jvm-java-21--kotlin)
+- [Java 21+ / Kotlin (Maven)](#java-21--kotlin-maven)
 - [Any other language](#any-other-language)
 
 ## Shared conventions (all languages)
@@ -18,7 +18,13 @@ Contents
 - Layout is `apps/<app>/` (deployable entry points: wiring and the outermost shell) plus
   `libs/<module>/`, each with `features/`, `steps/`, `src/`, and `plan/` at the root, and
   `contracts/` only in a module that serves or calls an HTTP or gRPC interface.
-  Adapt only what the toolchain forces (e.g. Gradle `src/main/...`), and say so in the layout tree.
+  Adapt only what the toolchain forces (e.g. Maven `src/main/java/...`), and say so in the layout tree.
+- Every module is a build module of the workspace root: a pnpm workspace package listed by
+  `pnpm-workspace.yaml` (`libs/*`, `apps/*`), or a Maven module listed in the root aggregator
+  `pom.xml`. No module is just a directory inside another build module.
+- `{{MODULE_GRAPH_ENFORCEMENT}}` makes three things fail the build: an import of a module that is not
+  declared in the manifest, a cycle between modules, and a `libs/` module depending on `apps/`.
+  It runs in `{{CMD_CHECK}}`.
 - Internal boundaries use native types only. Boundary types live in the owning module's public
   interface, with their constraints declared on the type. No JSON Schema files, no codegen.
 - `{{VALIDATION_MODULE}}` is one shared module, conventionally `libs/boundary`. It is itself a deep
@@ -33,7 +39,7 @@ Contents
 - Protobuf uses Buf for every language: `buf generate`, `buf lint`, `buf breaking`, with
   protovalidate (`buf.validate` field options) for constraints that proto3 cannot express.
 - `{{CMD_TEST}}` runs the features (excluding `@live`), then the property tests.
-- `CORE_DIR` is relative to the module root, so every module has its own core. One mutation config
+- `CORE_DIR` is relative to the module root, so every `libs/` module has its own core. One mutation config
   matches all of them with a glob; `{{CMD_MUTATION}}` mutates only these directories (excluding
   property tests and generators), runs only the property tests, and accepts module paths to scope
   a run to the changed modules. It never runs features or mutates shell code: features are far too
@@ -49,6 +55,10 @@ Contents
 - PUBLIC_API_MECHANISM: `exports` in each `package.json`
 - BOUNDARY_ENFORCEMENT: `exports` maps, pnpm's strict `node_modules`, and dependency-cruiser rules
   that forbid deep imports into another workspace's `src/`
+- MODULE_GRAPH_ENFORCEMENT: `workspace:*` dependencies in each `package.json` with pnpm's strict
+  `node_modules` (an undeclared module does not resolve), `disallow-workspace-cycles=true` in
+  `.npmrc`, and dependency-cruiser rules `no-circular`, `no-non-package-json`, and a custom rule
+  forbidding `libs/*` from importing `apps/*`
 - ADT_ENFORCEMENT: discriminated unions with `switch` + `@typescript-eslint/switch-exhaustiveness-check`
   and an `assertNever(x: never)` default
 - DECISION_TABLE_FORM: a nested `Record<CondA, Record<CondB, Outcome>>` constant declared with
@@ -61,8 +71,8 @@ Contents
 - PBT_REGRESSION: an `examples` entry in `fc.assert`
 - PBT_REPLAY: `fc.assert(property, { seed, path })`
 - CORE_DIR: `src/core/`
-- MUTATION_TOOL: StrykerJS with `mutate: ["libs/*/src/core/**/*.ts", "apps/*/src/core/**/*.ts",
-  "!**/*.property.ts", "!**/*.arbitraries.ts"]`, `--incremental`, and the `command` test runner
+- MUTATION_TOOL: StrykerJS with `mutate: ["libs/*/src/core/**/*.ts", "!**/*.property.ts",
+  "!**/*.arbitraries.ts"]`, `--incremental`, and the `command` test runner
   (node:test has no dedicated runner) running only the property tests (`node --test` on the
   compiled `*.property.js`), never cucumber-js. Scope a run with `--mutate "libs/<module>/src/core/**/*.ts"`.
 - VALIDATOR: typia, applied by its compile-time transform
@@ -95,12 +105,18 @@ Contents
     - `openapi-typescript` emits types only, without constraints, so the runtime validator is
       required, not optional.
 
-## JVM: Java 21+ / Kotlin
+## Java 21+ / Kotlin (Maven)
 
-- MODULE_UNIT: Gradle subproject
+- MODULE_UNIT: Maven module (a `<module>` of the root aggregator `pom.xml`, which also manages
+  dependency and plugin versions)
 - PUBLIC_API_MECHANISM: the module's `api` package. JPMS `module-info.java` `exports` only that package.
-- BOUNDARY_ENFORCEMENT: JPMS exports plus ArchUnit rules run in `check`. With Spring, use Spring
+- BOUNDARY_ENFORCEMENT: JPMS exports plus ArchUnit rules run in `{{CMD_CHECK}}`. With Spring, use Spring
   Modulith `ApplicationModules.verify()`.
+- MODULE_GRAPH_ENFORCEMENT: the Maven reactor (it rejects cyclic module dependencies),
+  `maven-dependency-plugin:analyze-only` with `failOnWarning=true` (every used module is declared,
+  no declared module is unused), `maven-enforcer-plugin` with `bannedDependencies` in each `libs/`
+  module banning the `apps` artifacts, and an ArchUnit `slices().matching("<base>.(*)..")
+  .should().beFreeOfCycles()` rule
 - ADT_ENFORCEMENT: sealed interfaces + records with pattern-matching `switch` and no `default`
   (Kotlin: sealed interfaces + `when` expressions). The compiler checks exhaustiveness.
 - DECISION_TABLE_FORM: an immutable `Map` keyed by a record of enums. Completeness is asserted in a
@@ -114,10 +130,12 @@ Contents
 - PBT_REGRESSION: an `@Example` method reproducing the shrunk counterexample
 - PBT_REPLAY: `@Property(seed = "...")`
 - CORE_DIR: `src/main/java/<module package>/core/` (the module's `core` subpackage)
-- MUTATION_TOOL: PIT via the `info.solidsoft.pitest` Gradle plugin with `pitest-junit5-plugin`,
-  `targetClasses = ['<base>.*.core.*']`, `targetTests = ['*Properties']` (so Cucumber runners are
-  excluded), and `enableDefaultIncrementalAnalysis = true`. Apply it to every module subproject, so
-  `./gradlew :libs:<module>:pitest` scopes a run to one module
+- MUTATION_TOOL: PIT via `org.pitest:pitest-maven` with the `pitest-junit5-plugin` dependency,
+  `<targetClasses><param><base>.*.core.*</param></targetClasses>`,
+  `<targetTests><param>*Properties</param></targetTests>` (so Cucumber runners are excluded), and
+  `<withHistory>true</withHistory>` for incremental runs. Configure it once in the root
+  `pluginManagement`, in a `mutation` profile, so `./mvnw -Pmutation -pl libs/<module> -am ...`
+  scopes a run to one module and its upstream modules
 - VALIDATOR: Jakarta Bean Validation (Hibernate Validator)
 - CONSTRAINT_MECHANISM: Jakarta constraint annotations on record components (`@NotNull`, `@NotBlank`,
   `@Size`, `@Pattern`, `@Email`, `@Min`/`@Max`, `@Valid` to cascade into nested records), including
@@ -127,23 +145,30 @@ Contents
 - CROSS_FIELD_FORM: a class-level custom constraint (an `@Constraint` annotation with a
   `ConstraintValidator`) on the record
 - VALIDATOR_DECLARATION: its constraint annotations; Bean Validation needs no validator object per
-  type, only the one shared `Validator` inside `:libs:boundary`
-- VALIDATION_MODULE: the `:libs:boundary` subproject (`Boundary.check(value)`)
+  type, only the one shared `Validator` inside `libs/boundary`
+- VALIDATION_MODULE: the `libs/boundary` Maven module (`Boundary.check(value)`)
 - JSON_SCHEMA_EXPORT: victools `jsonschema-generator` with `jsonschema-module-jakarta-validation`
-- OPENAPI_TOOLING: the `org.openapi.generator` Gradle plugin with `useBeanValidation=true` and
+- OPENAPI_TOOLING: `openapi-generator-maven-plugin`, bound to `generate-sources`, with `useBeanValidation=true` and
   `useJakartaEe=true` (server: `spring` with `interfaceOnly=true`, or `jaxrs-spec`; client: `java`),
   so generated models carry Jakarta constraints and are validated the same way
-- PROTOBUF_TOOLING: `buf generate` with `protoc-gen-java` and `protoc-gen-grpc-java`, validated
-  with `build.buf:protovalidate`
+- PROTOBUF_TOOLING: `buf generate` with `protoc-gen-java` and `protoc-gen-grpc-java`, run from
+  `exec-maven-plugin` in `generate-sources` and added as a source root with
+  `build-helper-maven-plugin`, validated with `build.buf:protovalidate`
 - CONTRACT_CHECKS: `redocly lint` for OpenAPI, `buf lint` and `buf breaking` for protobuf
 - STUB_BODY: `throw new UnsupportedOperationException()` (Kotlin: `TODO()`)
-- GENERATED_DIR: `build/generated/`
+- GENERATED_DIR: `target/generated-sources/` (ignored with `target/`)
 - UNCHECKED_CAST_EXAMPLES: casts, `Map<String, Object>`, `@SuppressWarnings("unchecked")`,
   `ObjectMapper.readValue` without `Boundary.check`, `ConstraintViolation.getInvalidValue()` or
   `${validatedValue}` in a constraint message
-- Typical commands: `./gradlew check`, `./gradlew test`, `./gradlew liveTest`,
-  `./gradlew generateContracts` (an aggregate of `openApiGenerate` and `buf generate`),
-  `./gradlew pitest`
+- Typical commands, all through the Maven wrapper (`mvn wrapper:wrapper`):
+    - check: `./mvnw -Pcheck verify`. Codegen, compile, Enforcer, dependency analysis, Checkstyle,
+      and only the ArchUnit tests (Surefire `groups=architecture`).
+    - test: `./mvnw verify`. One Surefire execution runs the Cucumber suite with
+      `cucumber.filter.tags=not @live`, then a second runs `*Properties`.
+    - live: `./mvnw -Plive verify` (`cucumber.filter.tags=@live`).
+    - gen: `./mvnw generate-sources`.
+    - mutation: `./mvnw -Pmutation test-compile org.pitest:pitest-maven:mutationCoverage`, scoped
+      with `-pl libs/<module> -am`.
 - Gotchas:
     - Cascading is opt-in: a nested record or collection element is validated only when the
       component carries `@Valid`. Add an ArchUnit rule that every component whose type is a
@@ -154,7 +179,14 @@ Contents
     - Hibernate Validator needs an EL implementation (`org.glassfish.expressly:expressly`) or the
       `ParameterMessageInterpolator`.
     - Kotlin: target the field with `@field:NotBlank`, or the constraint is put on the constructor
-      parameter and ignored.
+      parameter and ignored. Build it with `kotlin-maven-plugin`.
+    - Maven does not glob modules: every new module needs a `<module>` entry in the root `pom.xml`,
+      and the root aggregator must not declare dependencies itself, or every module inherits them
+      and the dependency analysis becomes meaningless. Use `dependencyManagement` only.
+    - A dependency used only through another module's API still counts as used: declare it
+      directly, or `dependency:analyze` reports it as used-undeclared.
+    - Cucumber reads `features/` at the module root, outside Maven's resource dirs: set
+      `cucumber.features` to it, or the suite runs zero scenarios and passes.
 
 ## Any other language
 
