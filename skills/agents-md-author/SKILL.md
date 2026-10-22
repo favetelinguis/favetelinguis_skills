@@ -2,19 +2,19 @@
 name: agents-md-author
 description: >-
   Writes or refreshes a project's AGENTS.md from a fixed engineering philosophy:
-  modular monolith of pnpm workspace or Maven modules, Ousterhout deep modules,
-  a pure core of algebraic data types
-  and decision tables behind an imperative shell, BDD features first,
-  property-based and mutation testing, native-type validation at internal
-  boundaries (typia, Jakarta Bean Validation), contract-first OpenAPI and
-  protobuf for HTTP and gRPC, and a plan-implement-review workflow. Interviews
-  the human about the project's purpose and its TypeScript or Java stack, maps
-  every rule onto that tooling, wires the enforcing commands, and installs
-  project-local pi prompt templates (/vibe, /vibe-review, /impl, /impl-review).
-  Works from a rough idea. Use when starting a new project or repo, or when creating, regenerating, updating, or
-  auditing AGENTS.md or CLAUDE.md, agent instructions, coding guidelines,
-  architecture rules, or the workflow prompt templates for a codebase.
-  Not for skills, READMEs, or other documentation.
+  a modular monolith (pnpm workspace, Maven modules, or Elixir Boundary modules),
+  Ousterhout deep modules, a pure core of ADTs and decision tables behind an
+  imperative shell, BDD features first, property-based and mutation testing,
+  native-type validation at internal boundaries (typia, Jakarta Bean Validation,
+  Zoi), contract-first OpenAPI and protobuf, and a plan-implement-review loop.
+  Interviews the human about the project's purpose and its TypeScript, Java, or
+  Elixir stack, maps every rule onto that tooling, pins a self-contained mise
+  toolchain (mise.toml, mise.lock, tasks), wires the enforcing commands, and
+  installs pi prompt templates (/vibe, /vibe-review, /impl, /impl-review). Works
+  from a rough idea. Use when starting a new project or repo, or when creating,
+  updating, or auditing AGENTS.md or CLAUDE.md, agent instructions, coding
+  guidelines, architecture rules, or workflow prompts.
+  Not for skills, READMEs, or other docs.
 ---
 
 # AGENTS.md author
@@ -44,7 +44,8 @@ goes under `## Project deviations` in `AGENTS.md`, with its reason.
 1. **Inspect the project.**
     - Read any existing `AGENTS.md`, `CLAUDE.md`, and README.
     - Read the manifests and workspace configs (`package.json`, `pnpm-workspace.yaml`, the
-      Maven `pom.xml` files, `module-info.java`), the CI config, and the top-level layout.
+      Maven `pom.xml` files, `module-info.java`, `mix.exs`), the toolchain pins (`mise.toml`,
+      `mise.lock`, `.tool-versions`), the CI config, and the top-level layout.
     - Note the language(s), package manager, and the test, lint, validation, and contract tools
       already in use, and any HTTP or gRPC interface the project serves or calls.
     - An empty repo is a greenfield project: the language is still to be decided.
@@ -53,8 +54,9 @@ goes under `## Project deviations` in `AGENTS.md`, with its reason.
    boundaries, and business rules are not an input: they are discovered later, in `/vibe` sessions.
     - What the project is for, and for whom (`PROJECT_PURPOSE`). Scope and non-goals only as far as
       they are known; a rough or partial statement is fine.
-    - Language and runtime, if not decided: TypeScript with pnpm workspaces, or Java with a Maven
-      multi-module build (Kotlin allowed). Any other language uses the fallback section of the
+    - Language and runtime, if not decided: TypeScript with pnpm workspaces, Java with a Maven
+      multi-module build (Kotlin allowed), or Elixir on Erlang/OTP with one Mix project split
+      into Boundary modules. Any other language uses the fallback section of the
       stack map, with every gap recorded as a deviation.
       Existing conventions the human wants to keep.
     - The deployable unit, defaulting to one binary, service, or CLI. Confirm rather than ask.
@@ -69,15 +71,20 @@ goes under `## Project deviations` in `AGENTS.md`, with its reason.
       written as "none yet" (see Placeholders), not invented.
 3. **Map the stack.** Read the language's section in
    [references/stack-tooling.md](references/stack-tooling.md), plus its "Shared conventions"
-   section. Prefer tools already in the project when they satisfy the rule. Confirm commands and
+   and "Self-contained toolchain (mise)" sections. Every language section lists the standing
+   deviations for that stack; record them under Project deviations. Prefer tools already in the project when they satisfy the rule. Confirm commands and
    flags with each tool's `--help` or docs.
 4. **Draft.** Copy the template to `<project>/AGENTS.md`, or follow "Updating an existing
    AGENTS.md" below. Copy each `assets/pi-prompts/<name>.md` to `<project>/.pi/prompts/<name>.md`.
    Replace every `{{PLACEHOLDER}}` in all five files (see the table below). Leave the living
    sections empty when nothing is known yet.
 5. **Wire enforcement.** Every command and check named in the file must exist and run.
+    - Start with the toolchain (see "Self-contained toolchain" below): `mise.toml` with every
+      tool pinned, `mise.lock`, and one mise task per `CMD_*`. Every `CMD_*` in the generated
+      files is `mise run <task>`.
     - List what is missing: dependencies, configs, task scripts, the workspace root (`pnpm-workspace.yaml`
-      globbing `libs/*` and `apps/*`, or the Maven root aggregator `pom.xml`), the validation module
+      globbing `libs/*` and `apps/*`, the Maven root aggregator `pom.xml`, or the root `mix.exs`
+      globbing `libs/*/lib` and `apps/*/lib`), the validation module
       skeleton (`VALIDATION_MODULE`), the module-graph checks (`MODULE_GRAPH_ENFORCEMENT`), the validator setup (the typia transform for TypeScript), a `CMD_GEN`
       that is a no-op until contracts exist, and the `.gitignore` entry for generated code.
     - Get the human's approval, then add only that tooling.
@@ -99,6 +106,30 @@ goes under `## Project deviations` in `AGENTS.md`, with its reason.
    files added. State which living sections (Modules, External boundaries) are empty and that
    `/vibe` fills them in as the design emerges. Tell the human to run `/reload` (or restart pi) and trust the project so the
    prompt templates load. The human reviews and commits; never commit.
+
+## Self-contained toolchain
+
+A fresh clone must reach a passing `CMD_CHECK` with nothing installed globally except mise:
+
+```bash
+mise trust && mise install && mise run setup && mise run check
+```
+
+- `mise.toml` pins the runtime and every CLI that `AGENTS.md` or a task names (buf, redocly,
+  protoc plugins, pnpm, the JDK). Never rely on a tool from the human's global config.
+- `[settings] lockfile = true`, and `mise.lock` is committed. Lock every platform the team and
+  CI use (`mise lock --platform linux-x64,linux-arm64,macos-arm64`). CI installs with
+  `jdx/mise-action` and `mise install --locked`.
+- Tool state that would otherwise be global (Mix archives and escripts, Hex cache) is pointed
+  into a git-ignored project directory through `[env]`.
+- Tasks: `setup`, `check`, `test`, `test:live`, `gen`, `mutation`. Each `CMD_*` placeholder is
+  `mise run <task>`; the task bodies are the stack's commands from the stack map, so the
+  commands table reads the same in every stack.
+- Greenfield order: `mise use` the runtime (this writes `mise.toml`), add the settings, env, and
+  tasks, run `mise install`, then scaffold the workspace with the now-pinned tools
+  (`pnpm init`, `mvn wrapper:wrapper`, `mix new`). Never scaffold with a global tool.
+- Per-stack pins, env, and gotchas are in the stack map's "Self-contained toolchain (mise)"
+  section. Confirm versions with `mise ls-remote <tool>` and pin exact versions.
 
 ## Placeholders
 
@@ -155,5 +186,8 @@ goes under `## Project deviations` in `AGENTS.md`, with its reason.
   so there is one source.
 - The rules make `AGENTS.md` about 300 lines. Keep the project sections tight. The check script warns
   above 400 lines.
+- Do not overstate idiom fit. Where a stack's own idioms already satisfy a rule (Elixir's
+  immutability, pattern matching, tagged tuples, processes as the shell), fill the placeholder
+  with the idiom; do not add extra rules, wrappers, or DSLs on top.
 - A rule that tooling cannot enforce in this stack is still a rule. Record the gap under Project
   deviations, and fill its Enforcement cell with "review only".
