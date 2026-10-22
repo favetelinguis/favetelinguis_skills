@@ -19,8 +19,9 @@ Contents
 ## Shared conventions (all languages)
 
 - Layout is `apps/<app>/` (deployable entry points: wiring and the outermost shell) plus
-  `libs/<module>/`, each with `features/`, `steps/`, `src/`, and `plan/` at the root, and
-  `contracts/` only in a module that serves or calls an HTTP or gRPC interface.
+  `libs/<module>/`, each with `features/`, `steps/`, and `src/`, and
+  `contracts/` only in a module that serves or calls an HTTP or gRPC interface. `tasks/` at the
+  repo root holds one task file per goal; it is created by the first `/specify` session.
   Adapt only what the toolchain forces (e.g. Maven `src/main/java/...`), and say so in the layout tree.
 - Every module is a build module of the workspace root: a pnpm workspace package listed by
   `pnpm-workspace.yaml` (`libs/*`, `apps/*`), or a Maven module listed in the root aggregator
@@ -38,7 +39,7 @@ Contents
     - Its errors carry the path and the violated constraint, never the failing value. The
       underlying validators do include the value, so it strips it.
 - HTTP and gRPC are contract-first (Rule 3). The OpenAPI document (3.1) or `.proto` files in
-  `contracts/` are written during `/vibe`. `{{CMD_GEN}}` generates code from every contract into
+  `contracts/` are written during `/design`. `{{CMD_GEN}}` generates code from every contract into
   `{{GENERATED_DIR}}`, and is a no-op while no contracts exist, so it can be wired on day one.
 - Protobuf uses Buf for every language: `buf generate`, `buf lint`, `buf breaking`, with
   protovalidate (`buf.validate` field options) for constraints that proto3 cannot express.

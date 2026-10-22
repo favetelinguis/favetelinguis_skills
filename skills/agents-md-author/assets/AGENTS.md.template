@@ -10,7 +10,7 @@
 
 A module is one {{MODULE_UNIT}} under `libs/` (or an app under `apps/`). Every module is a boundary (see Data validation rules). When to create, split, or merge one is governed by Module structure (see Architecture).
 
-This table is a living record, not a plan. List only modules that the specification (features, contracts, interface comments) already contains, and keep each row in step with it. The Plan step adds, revises, splits, merges, or removes rows as the design is discovered. Never invent a module to fill the table.
+This table is a living record, not a plan. List only modules that the specification (features, contracts, interface comments) already contains, and keep each row in step with it. The Design step adds, revises, splits, merges, or removes rows as the design is discovered. Never invent a module to fill the table.
 
 | Module | Owns (responsibility and the decisions it hides) | Depends on | Public interface |
 | --- | --- | --- | --- |
@@ -20,7 +20,7 @@ This table is a living record, not a plan. List only modules that the specificat
 
 Every source of data that enters this process from outside the type system. Rule 1 applies to each.
 
-This list is a living record. It holds the sources the specification already covers, and the Plan step extends it as new ones are discovered. An empty list does not mean there are no boundaries: Rule 1 applies to every source that exists, listed or not.
+This list is a living record. It holds the sources the specification already covers, and the Design step extends it as new ones are discovered. An empty list does not mean there are no boundaries: Rule 1 applies to every source that exists, listed or not.
 
 {{EXTERNAL_BOUNDARIES}}
 
@@ -60,7 +60,7 @@ Each module is a separate {{MODULE_UNIT}} with its own manifest and its own decl
 - **Dependencies are explicit, acyclic, and point one way.** Each module declares in its manifest every module it uses, and nothing more. Dependencies point from policy to mechanism and from `apps/` to `libs/`, never the reverse. This is enforced by {{MODULE_GRAPH_ENFORCEMENT}}.
 - **`apps/` hold only wiring and the outermost shell:** entry points, configuration, and composition of `libs/` modules. Domain logic never lives in an app.
 - **`{{VALIDATION_MODULE}}` is the one shared module.** It is mechanism every module depends on, never a home for shared domain types or helpers.
-- **Structure changes are Plan-step decisions.** Creating, splitting, or merging a module, or adding a dependency between modules, is decided in the Plan step with the human and recorded in the Modules table.
+- **Structure changes are Design-step decisions.** Creating, splitting, or merging a module, or adding a dependency between modules, is decided in the Design step with the human and recorded in the Modules table.
 
 ## Pure core, imperative shell
 
@@ -154,15 +154,26 @@ This project strictly follows the design principles of John Ousterhout's *A Phil
 
 # Way of working
 
-Work proceeds in small steps: Plan, then Implement, then Review. Each step ends in a commit the human makes after review. The human starts each step with a prompt that gives your role and its procedure. Follow that prompt.
+Work is cut into **tasks**. A task is one self-contained change that the team can understand, review, and deploy as one pull request: it delivers behavior visible through a public interface and leaves the commands passing. Each goal is one file in `tasks/`: its intent, scope, glossary, and decisions, then its tasks in order.
 
-The **specification** is three parts, kept consistent with each other and written before the implementation:
+Each task states its **requirements**: the intent, and exactly what must happen, as numbered, observable statements in the glossary's terms, with concrete examples where a rule branches. Requirements say what and why, never how: no code, modules, types, or schemas. They are the human's word; every later artifact traces back to them.
 
-- behavior: Gherkin features in `libs/*/features/` and `apps/*/features/`;
+Work moves through four steps, each ended by a commit the human makes after review:
+
+1. **Specify** (once per goal, revisited as tasks complete): with the human, cut the goal into tasks and write each one's requirements. No design.
+2. **Design** (per task): write the specification for the next task only, tracing every scenario to a requirement.
+3. **Implement** (per task): make that specification pass.
+4. **Review** (per task): review the result as the team's pull request and close the task.
+
+The human starts each step with a prompt that gives your role and its procedure. Follow that prompt.
+
+The **specification** makes a task's requirements checkable. It is three parts, kept consistent with each other and written before the implementation:
+
+- behavior: Gherkin features in `libs/*/features/` and `apps/*/features/`, each scenario tagged with the requirement it verifies;
 - contracts: boundary types with their declared constraints on each module's public interface, plus OpenAPI documents and `.proto` files in `libs/*/contracts/` and `apps/*/contracts/` for HTTP and gRPC;
 - interfaces: interface comments on public functions and types, including the core's ADTs and the shape of its decision tables.
 
-Plans, decisions, and open questions that span steps live in `plan/`. Implementation follows the specification and never changes it to fit the code. If the specification is wrong, contradictory, or impossible to meet, stop and raise it with the human.
+Implementation follows the specification and never changes it to fit the code. If the specification is wrong, contradictory, or impossible to meet, stop and raise it with the human.
 
 # Testing rules (BDD, features first)
 
@@ -254,7 +265,7 @@ Data crossing a boundary is described by {{LANGUAGE}} types. Shape is the type i
 - Validation errors must never contain the data that failed: only the path and the violated constraint. Boundary data can hold credentials or private content.
 - Where a library needs a JSON Schema (for example a model's tool definition), derive it from the boundary type with {{JSON_SCHEMA_EXPORT}}. Never hand-write it.
 - A new boundary adds its boundary type or contract in the same change.
-  - If implementation uncovers a boundary the plan did not cover, add it and call it out for the reviewer.
+  - If implementation uncovers a boundary the task did not cover, add it and call it out for the reviewer.
   - Touching an existing unvalidated boundary means migrating it.
 - Code generated from contracts is never committed (`{{GENERATED_DIR}}` is git-ignored). Run `{{CMD_GEN}}` (or `{{CMD_CHECK}}`) after changing a contract.
 - Data created and consumed inside one module, and typed there, is not a boundary.
@@ -288,7 +299,7 @@ Mechanical checks back the rules above. When a check fails, fix the code. Never 
 | --- | --- |
 | Module encapsulation | {{BOUNDARY_ENFORCEMENT}} |
 | Module dependency graph (declared, acyclic, `apps/` to `libs/` only) | {{MODULE_GRAPH_ENFORCEMENT}} |
-| Module granularity (split and merge signals) | judgement, checked in the Plan and Review steps |
+| Module granularity (split and merge signals) | judgement, checked in the Design and Review steps |
 | Exhaustive handling of domain ADTs | {{ADT_ENFORCEMENT}} |
 | Interface comments on public declarations | {{INTERFACE_COMMENT_ENFORCEMENT}} |
 | Boundary types and validation | {{VALIDATOR}}, via `{{CMD_CHECK}}` |
